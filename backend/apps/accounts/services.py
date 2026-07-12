@@ -48,6 +48,87 @@ def update_employee(*, actor, emp: Employee, data: dict) -> Employee:
     return emp
 
 
+# ── Join requests (Admin approval of pending onboarding) ────────────────
+def get_join_request(org, request_id):
+    from apps.organization.models import SignupRequest
+    sr = (
+        SignupRequest.objects.filter(org=org, id=request_id)
+        .select_related("employee")
+        .first()
+    )
+    if not sr:
+        raise NotFound("Join request not found.")
+    return sr
+
+
+def list_join_requests(org, status: str | None = None):
+    from apps.organization.models import SignupRequest
+    qs = SignupRequest.objects.filter(org=org).select_related("employee").order_by("-created_at")
+    if status:
+        qs = qs.filter(status=status)
+    return list(qs)
+
+
+@transaction.atomic
+def approve_join_request(*, actor, sr) -> object:
+    from django.utils import timezone
+    if sr.status in ("APPROVED", "REJECTED", "EXPIRED"):
+        raise ValidationError(f"Request already {sr.status}.")
+    emp = sr.employee
+    if emp is None:
+        raise NotFound("No employee attached to this request.")
+    emp.role = sr.requested_role
+    emp.access_status = "ACTIVE"
+    emp.save(update_fields=["role", "access_status", "updated_at"])
+
+    sr.status = "APPROVED"
+    sr.decided_by = actor
+    sr.decided_at = timezone.now()
+    sr.save(update_fields=["status", "decided_by", "decided_at", "updated_at"])
+
+    log_activity(
+        org_id=sr.org_id, actor=actor, action="join.approved",
+        entity_type="signup_request", entity_id=sr.id,
+        metadata={"email": emp.email, "role": emp.role},
+    )
+    notify(
+        org_id=sr.org_id, recipient=emp, type="ROLE_CHANGED",
+        title="Access approved",
+        body=f"You now have {emp.role} access to {sr.org.name}.",
+        entity_type="employee", entity_id=emp.id,
+    )
+    return sr
+
+
+@transaction.atomic
+def reject_join_request(*, actor, sr, note: str | None) -> object:
+    from django.utils import timezone
+    if sr.status in ("APPROVED", "REJECTED", "EXPIRED"):
+        raise ValidationError(f"Request already {sr.status}.")
+    emp = sr.employee
+    if emp is not None:
+        emp.access_status = "REJECTED"
+        emp.save(update_fields=["access_status", "updated_at"])
+    sr.status = "REJECTED"
+    sr.decided_by = actor
+    sr.decided_at = timezone.now()
+    sr.decision_note = note
+    sr.save(update_fields=["status", "decided_by", "decided_at", "decision_note", "updated_at"])
+
+    log_activity(
+        org_id=sr.org_id, actor=actor, action="join.rejected",
+        entity_type="signup_request", entity_id=sr.id, metadata={"note": note},
+    )
+    if emp is not None:
+        notify(
+            org_id=sr.org_id, recipient=emp, type="ROLE_CHANGED",
+            title="Access request rejected",
+            body=note or "Your access request was rejected.",
+            entity_type="employee", entity_id=emp.id,
+        )
+    return sr
+
+
 @transaction.atomic
 def change_role(*, actor, emp: Employee, new_role: str) -> Employee:
     """The ONLY way a role changes. Admin-guarded at the router; logged + notified."""

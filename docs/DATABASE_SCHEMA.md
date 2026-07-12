@@ -10,6 +10,9 @@ Design rules applied everywhere:
 - **`org_id` on every business table** — multi-tenancy groundwork; v1 seeds one organization.
 - **Business rules enforced in the database**, not only the API: double-allocation, booking
   overlap, lifecycle transitions, role storage.
+- **Workspace onboarding is self-serve but guarded**: first company creator becomes Admin for
+  that new organization; all other role signups require a matching role join code plus Admin
+  approval before company data is visible.
 - **No hard deletes** for master data (`ACTIVE/INACTIVE` status); `activity_logs` is append-only.
 - **Derived states are never stored** (Overdue, Ongoing booking) — computed at read time, so they
   can never go stale.
@@ -21,8 +24,11 @@ Design rules applied everywhere:
 
 ```
 organizations 1─* departments 1─* employees
+organizations 1─* role_join_codes
+organizations 1─* signup_requests
 departments  1─* departments (parent hierarchy)
 employees    1─1 supabase auth.users (auth_uid)
+signup_requests 0─1 employees (after Supabase email verification / first login)
 asset_categories 1─* assets
 assets 1─* allocations ─* transfer_requests
 assets 1─* bookings
@@ -49,6 +55,10 @@ CREATE EXTENSION IF NOT EXISTS citext;       -- case-insensitive emails
 -- Enums
 -- ============================================================
 CREATE TYPE user_role         AS ENUM ('ADMIN','ASSET_MANAGER','DEPT_HEAD','EMPLOYEE');
+CREATE TYPE join_code_role    AS ENUM ('ASSET_MANAGER','DEPT_HEAD','EMPLOYEE');
+CREATE TYPE employee_access_status AS ENUM ('PENDING_APPROVAL','ACTIVE','REJECTED','SUSPENDED');
+CREATE TYPE signup_request_status AS ENUM ('PENDING_EMAIL_VERIFICATION','PENDING_APPROVAL',
+                                           'APPROVED','REJECTED','EXPIRED');
 CREATE TYPE record_status     AS ENUM ('ACTIVE','INACTIVE');
 CREATE TYPE asset_status      AS ENUM ('AVAILABLE','ALLOCATED','RESERVED','UNDER_MAINTENANCE',
                                        'LOST','RETIRED','DISPOSED');
@@ -73,6 +83,8 @@ CREATE TYPE notif_type        AS ENUM ('ASSET_ASSIGNED','ASSET_RETURNED','TRANSF
 CREATE TABLE organizations (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name        text NOT NULL,
+    slug        text UNIQUE,                         -- public workspace handle, optional in v1 UI
+    status      record_status NOT NULL DEFAULT 'ACTIVE',
     created_at  timestamptz NOT NULL DEFAULT now()
 );
 
@@ -96,6 +108,8 @@ CREATE TABLE departments (
 
 -- ============================================================
 -- Employees (bridge to Supabase Auth; ROLES LIVE HERE, never in JWT claims)
+-- `access_status` gates company data. Pending join-code users can authenticate
+-- but cannot access ERP data until Admin approval.
 -- ============================================================
 CREATE TABLE employees (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -104,7 +118,9 @@ CREATE TABLE employees (
     full_name     text NOT NULL,
     email         citext NOT NULL,
     department_id uuid REFERENCES departments(id),
-    role          user_role NOT NULL DEFAULT 'EMPLOYEE',   -- signup can never set this ≠ EMPLOYEE
+    role          user_role NOT NULL DEFAULT 'EMPLOYEE',   -- granted role after approval
+    requested_role user_role,                              -- requested through join code
+    access_status employee_access_status NOT NULL DEFAULT 'PENDING_APPROVAL',
     status        record_status NOT NULL DEFAULT 'ACTIVE',
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now(),
@@ -113,6 +129,58 @@ CREATE TABLE employees (
 
 ALTER TABLE departments
     ADD CONSTRAINT dept_head_fk FOREIGN KEY (head_id) REFERENCES employees(id);
+
+-- ============================================================
+-- Workspace onboarding / role join codes
+-- ============================================================
+-- Admins see one join code per role in the UI. The plaintext code is shown
+-- only immediately after creation/rotation; the database stores only a hash.
+CREATE TABLE role_join_codes (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id         uuid NOT NULL REFERENCES organizations(id),
+    role           join_code_role NOT NULL,
+    code_hash      text NOT NULL UNIQUE,
+    status         record_status NOT NULL DEFAULT 'ACTIVE',
+    created_by     uuid REFERENCES employees(id),
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    last_rotated_at timestamptz NOT NULL DEFAULT now(),
+    expires_at     timestamptz
+);
+
+CREATE UNIQUE INDEX uniq_active_role_join_code
+    ON role_join_codes (org_id, role) WHERE status = 'ACTIVE';
+
+CREATE INDEX idx_role_join_codes_lookup
+    ON role_join_codes (role, status);
+
+-- A signup request is created before Supabase sends an email. The frontend gets
+-- a single-use signup_ticket and passes it to Supabase user_metadata. On first
+-- verified login the auth bridge links auth_uid and moves the request forward.
+CREATE TABLE signup_requests (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id         uuid NOT NULL REFERENCES organizations(id),
+    role_code_id   uuid REFERENCES role_join_codes(id),
+    employee_id    uuid REFERENCES employees(id),
+    signup_ticket_hash text NOT NULL UNIQUE,
+    full_name      text NOT NULL,
+    email          citext NOT NULL,
+    requested_role user_role NOT NULL,
+    status         signup_request_status NOT NULL DEFAULT 'PENDING_EMAIL_VERIFICATION',
+    decided_by     uuid REFERENCES employees(id),
+    decided_at     timestamptz,
+    decision_note  text,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    expires_at     timestamptz,
+    CONSTRAINT signup_role_code_required CHECK (
+        (requested_role = 'ADMIN' AND role_code_id IS NULL)
+        OR (requested_role <> 'ADMIN' AND role_code_id IS NOT NULL)
+    )
+);
+
+CREATE INDEX idx_signup_requests_org_status
+    ON signup_requests (org_id, status, created_at DESC);
 
 -- ============================================================
 -- Asset categories (custom-field definitions as JSONB schema)
@@ -429,6 +497,8 @@ BEGIN NEW.updated_at := now(); RETURN NEW; END $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_touch_departments  BEFORE UPDATE ON departments          FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER trg_touch_employees    BEFORE UPDATE ON employees            FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_touch_role_codes   BEFORE UPDATE ON role_join_codes      FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_touch_signup_requests BEFORE UPDATE ON signup_requests   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER trg_touch_categories   BEFORE UPDATE ON asset_categories     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER trg_touch_assets       BEFORE UPDATE ON assets               FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER trg_touch_maintenance  BEFORE UPDATE ON maintenance_requests FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
@@ -440,7 +510,9 @@ CREATE TRIGGER trg_touch_maintenance  BEFORE UPDATE ON maintenance_requests FOR 
 
 | Loophole | Closed by |
 |---|---|
-| Self-assigned admin at signup | `employees.role` defaults to `EMPLOYEE`; signup API has no role parameter; role changes only via Admin-guarded endpoint (and every change writes `activity_logs` + `ROLE_CHANGED` notification) |
+| Self-assigned admin at generic signup | The normal Join Company flow does not allow `ADMIN`; only Create Company can bootstrap one Admin for a brand-new organization. Existing organizations require Admin approval for every join-code user. |
+| Shared role code gives access to strangers | Role code only creates a `signup_requests` row and an employee with `access_status=PENDING_APPROVAL`; business endpoints reject pending users until Admin approval. |
+| Role code leakage | Codes are high-entropy, scoped to one org + role, stored as hashes, and Admin can rotate/revoke each role's code. |
 | Role spoofing via forged/edited JWT claims | Roles are read from the `employees` table by `auth_uid`, never from token claims |
 | Double allocation (race condition included) | `uniq_open_allocation` partial unique index — concurrent inserts serialize at the DB |
 | Overlapping bookings (race condition included) | `booking_no_overlap` exclusion constraint with half-open ranges |
@@ -464,8 +536,10 @@ CREATE TRIGGER trg_touch_maintenance  BEFORE UPDATE ON maintenance_requests FOR 
 ## Seed Data (Dev A's `manage.py seed_demo`)
 
 - 1 organization ("AssetFlow Demo Corp")
+- 3 active role join codes owned by the demo Admin: Employee, Department Head, Asset Manager
 - 5 departments (Engineering, Operations, HR, Finance, Facilities — Facilities parented under Operations to show hierarchy)
 - 8 categories (Electronics with warranty custom field, Furniture, Vehicles, Meeting Rooms, AV Equipment, Tools, Appliances, Safety Gear)
 - ~40 assets across statuses, ~6 flagged `is_bookable` (3 rooms, 2 vehicles, 1 projector)
 - Users: 1 Admin, 1 Asset Manager, 2 Department Heads, 4 Employees (documented demo passwords)
+- Optional pending join requests for the demo approval queue
 - A staged story for the demo: Priya holds AF-0114 (so the transfer-conflict flow can be shown live), one overdue allocation, one pending maintenance request, one in-progress audit cycle

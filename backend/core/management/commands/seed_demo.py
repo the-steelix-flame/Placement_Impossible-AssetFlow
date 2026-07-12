@@ -56,6 +56,7 @@ class Command(BaseCommand):
         depts = self._departments(org)
         cats = self._categories(org)
         users = self._users(org, depts)
+        self._onboarding(org, users["admin"])
         assets = self._assets(org, depts, cats, actor=users["admin"])
         self._story(org, users, assets, depts)
 
@@ -72,7 +73,10 @@ class Command(BaseCommand):
         from apps.audits.models import AuditAssignment, AuditCycle, AuditItem
         from apps.booking.models import Booking
         from apps.maintenance.models import MaintenanceRequest
+        from apps.organization.models import RoleJoinCode, SignupRequest
 
+        SignupRequest.objects.filter(org=org).delete()
+        RoleJoinCode.objects.filter(org=org).delete()
         AuditItem.objects.all().delete()
         AuditAssignment.objects.all().delete()
         AuditCycle.objects.all().delete()
@@ -120,6 +124,7 @@ class Command(BaseCommand):
             return Employee.objects.create(
                 org=org, email=email, full_name=name, role=role,
                 department=dept, auth_uid=_auth_uid(email),
+                access_status="ACTIVE",  # seeded users are pre-approved
             )
 
         users = {
@@ -137,6 +142,22 @@ class Command(BaseCommand):
         depts["OPS"].head = users["rohan"]
         depts["OPS"].save(update_fields=["head", "updated_at"])
         return users
+
+    # ── onboarding: role codes + a pending join request ─────────────────
+    def _onboarding(self, org, admin):
+        from apps.organization import services as org_services
+
+        codes = org_services._mint_role_codes(org, admin)
+        role_codes = {c["role"]: c["code"] for c in codes}
+        # A pending join request so the Admin approval queue isn't empty in the demo.
+        org_services.validate_join_code(
+            full_name="Ishaan Pending", email="pending@demo.assetflow",
+            requested_role="EMPLOYEE", role_code=role_codes["EMPLOYEE"],
+        )
+        self.stdout.write(self.style.SUCCESS("Role join codes (demo — copy for Join Company):"))
+        for role, code in role_codes.items():
+            self.stdout.write(f"  {role:<14} {code}")
+        self.stdout.write("Pending join request: pending@demo.assetflow (EMPLOYEE) — approve in the queue")
 
     # ── assets ──────────────────────────────────────────────────────────
     def _assets(self, org, depts, cats, actor) -> dict[str, object]:

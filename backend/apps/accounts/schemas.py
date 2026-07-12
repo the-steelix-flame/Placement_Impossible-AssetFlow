@@ -10,6 +10,8 @@ class EmployeeOut(Schema):
     full_name: str
     email: str
     role: str
+    requested_role: str | None = None
+    access_status: str
     status: str
     department_id: UUID | None = None
     department_name: str | None = None
@@ -19,6 +21,28 @@ class EmployeeOut(Schema):
     @staticmethod
     def resolve_department_name(obj):
         return obj.department.name if obj.department_id else None
+
+
+class JoinRequestOut(Schema):
+    id: UUID
+    organization_id: UUID
+    full_name: str
+    email: str
+    requested_role: str
+    status: str
+    employee_id: UUID | None = None
+    created_at: datetime
+    decided_by_id: UUID | None = None
+    decided_at: datetime | None = None
+    decision_note: str | None = None
+
+    @staticmethod
+    def resolve_organization_id(obj):
+        return obj.org_id
+
+
+class JoinRejectIn(Schema):
+    note: str | None = None
 
 
 class MeOut(EmployeeOut):
