@@ -33,6 +33,9 @@ class RoleJoinCode(models.Model):
     org = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="role_join_codes")
     role = models.CharField(max_length=16, choices=JoinCodeRole.choices)
     code_hash = models.TextField(unique=True)
+    # Plaintext kept so Admins can view/copy/share the invite (codes are invitations,
+    # not passwords; joining still requires Admin approval).
+    code = models.TextField(null=True, blank=True)
     status = models.CharField(
         max_length=16, choices=RecordStatus.choices, default=RecordStatus.ACTIVE
     )

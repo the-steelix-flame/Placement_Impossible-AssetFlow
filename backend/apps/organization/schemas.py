@@ -45,6 +45,7 @@ class ValidateCodeOut(Schema):
 class JoinCodeOut(Schema):
     id: UUID
     role: str
+    code: str | None = None  # Admin-viewable plaintext invite code
     masked_code: str
     last_rotated_at: datetime
     expires_at: datetime | None = None

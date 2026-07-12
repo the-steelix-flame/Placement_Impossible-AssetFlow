@@ -42,7 +42,7 @@ def _mint_role_codes(org, actor) -> list[dict]:
     for role in JOINABLE_ROLES:
         plaintext = new_role_code(role)
         RoleJoinCode.objects.create(
-            org=org, role=role, code_hash=hash_secret(plaintext),
+            org=org, role=role, code_hash=hash_secret(plaintext), code=plaintext,
             created_by=actor,
         )
         out.append({"role": role, "code": plaintext})
@@ -154,6 +154,7 @@ def list_join_codes(org) -> list[dict]:
     return [
         {
             "id": c.id, "role": c.role,
+            "code": c.code,  # Admin-viewable plaintext (None for legacy pre-reseed codes)
             "masked_code": f"AF-{_ROLE_PREFIX.get(c.role, 'XX')}-••••••",
             "last_rotated_at": c.last_rotated_at, "expires_at": c.expires_at,
             "status": c.status, "created_at": c.created_at,
@@ -171,7 +172,7 @@ def rotate_join_code(*, org, role: str, actor) -> dict:
     )
     plaintext = new_role_code(role)
     code = RoleJoinCode.objects.create(
-        org=org, role=role, code_hash=hash_secret(plaintext), created_by=actor,
+        org=org, role=role, code_hash=hash_secret(plaintext), code=plaintext, created_by=actor,
     )
     log_activity(
         org_id=org.id, actor=actor, action="join_code.rotated",

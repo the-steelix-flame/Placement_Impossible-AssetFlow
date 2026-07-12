@@ -10,6 +10,7 @@ const PUBLIC_PATHS = [
   "/pending-approval",
   "/forgot-password",
   "/update-password",
+  "/auth/callback",  // Supabase email-verification exchange runs here before a session exists
 ];
 
 export async function proxy(request: NextRequest) {

@@ -58,7 +58,7 @@ export default function JoinCompanyPage() {
             signup_request_id: validation.signup_request_id,
             onboarding_flow: "JOIN_COMPANY",
           },
-          emailRedirectTo: `${window.location.origin}/pending-approval`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/pending-approval`,
         },
       });
 
