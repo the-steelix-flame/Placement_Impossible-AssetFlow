@@ -188,3 +188,28 @@ CREATE TRIGGER trg_touch_assets BEFORE UPDATE ON assets
 DROP TRIGGER IF EXISTS trg_touch_maintenance ON maintenance_requests;
 CREATE TRIGGER trg_touch_maintenance BEFORE UPDATE ON maintenance_requests
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ============================================================================
+-- Workspace onboarding (v1.1) — applied by migration
+-- apps/organization/migrations/0003_onboarding_constraints.py (mirrored here).
+-- ============================================================================
+
+-- One ACTIVE join code per (org, role).
+DROP INDEX IF EXISTS uniq_active_role_join_code;
+CREATE UNIQUE INDEX uniq_active_role_join_code
+    ON role_join_codes (org_id, role) WHERE status = 'ACTIVE';
+
+-- ADMIN bootstraps a workspace (no code); everyone else must present a role code.
+ALTER TABLE signup_requests DROP CONSTRAINT IF EXISTS signup_role_code_required;
+ALTER TABLE signup_requests ADD CONSTRAINT signup_role_code_required CHECK (
+    (requested_role = 'ADMIN' AND role_code_id IS NULL)
+    OR (requested_role <> 'ADMIN' AND role_code_id IS NOT NULL)
+);
+
+DROP TRIGGER IF EXISTS trg_touch_role_codes ON role_join_codes;
+CREATE TRIGGER trg_touch_role_codes BEFORE UPDATE ON role_join_codes
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+DROP TRIGGER IF EXISTS trg_touch_signup_requests ON signup_requests;
+CREATE TRIGGER trg_touch_signup_requests BEFORE UPDATE ON signup_requests
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();

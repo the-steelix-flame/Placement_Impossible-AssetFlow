@@ -20,8 +20,10 @@ from apps.assets.api import router as assets_router  # noqa: E402
 from apps.audits.api import router as audits_router  # noqa: E402
 from apps.booking.api import router as booking_router  # noqa: E402
 from apps.maintenance.api import router as maintenance_router  # noqa: E402
+from apps.organization.api import onboarding_router  # noqa: E402
 from apps.organization.api import router as organization_router  # noqa: E402
 
+api.add_router("/v1", onboarding_router)  # public — no auth
 api.add_router("/v1", accounts_router)
 api.add_router("/v1", organization_router)
 api.add_router("/v1", assets_router)

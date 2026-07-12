@@ -22,6 +22,16 @@ class PermissionDenied(DomainError):
     code = "forbidden"
 
 
+class ApprovalPending(DomainError):
+    """Authenticated but not yet Admin-approved — blocked from all company data."""
+
+    status = 403
+    code = "approval_pending"
+
+    def __init__(self, detail: str = "Your access is pending administrator approval."):
+        super().__init__(detail)
+
+
 class NotFound(DomainError):
     status = 404
     code = "not_found"
@@ -30,6 +40,16 @@ class NotFound(DomainError):
 class ValidationError(DomainError):
     status = 422
     code = "validation_error"
+
+
+class InvalidJoinCode(DomainError):
+    """Selected role + join code don't match an active code — sent before Supabase signup."""
+
+    status = 403
+    code = "invalid_join_code"
+
+    def __init__(self, detail: str = "Invalid join code for selected role."):
+        super().__init__(detail)
 
 
 class Conflict(DomainError):

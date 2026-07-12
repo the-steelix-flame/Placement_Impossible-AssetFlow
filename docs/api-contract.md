@@ -9,19 +9,45 @@
 
 ---
 
-## 1. Auth
+## 1. Auth + Workspace Onboarding
 
-Every endpoint below requires a **Supabase JWT** in the header (there are no public
-API endpoints — login/signup happen on the Supabase client, not here):
+Most endpoints below require a **Supabase JWT** in the header. The onboarding endpoints
+in section 4.0 are intentionally public because they must validate workspace creation
+and role join codes **before** the frontend asks Supabase to send an email.
 
 ```
 Authorization: Bearer <supabase_access_token>
 ```
 
-- The backend verifies the JWT signature (HS256, Supabase JWT secret) and loads the
-  matching `employees` row by `auth_uid`. **Role comes from our DB, never from the token.**
-- First login auto-creates a plain `EMPLOYEE` row (no way to self-assign any other role).
+- Real Supabase user tokens are verified with Supabase JWKS (`ES256`/`RS256`).
+- Local dev tokens from `mint_token` still use `HS256`.
+- The backend loads the matching employee by `auth_uid` or by the onboarding signup ticket
+  stored in Supabase `user_metadata`.
+- **Role and access status come from our DB, never from the token.**
+- A user can only become Admin automatically by creating a new workspace/company.
+- Users joining an existing company with an Employee / Department Head / Asset Manager code
+  are created as pending until Admin approval.
 - `401` if the token is missing/invalid/expired. `403` if the role isn't allowed.
+
+### Signup paths
+
+There are two separate signup paths:
+
+1. **Create Company**
+   - First user creates a new `organization`.
+   - Backend creates the first employee as `ADMIN` and `access_status=ACTIVE`.
+   - Backend creates role join codes for `EMPLOYEE`, `DEPT_HEAD`, and `ASSET_MANAGER`.
+   - Backend returns a `signup_ticket`.
+   - Frontend calls Supabase signup with that ticket in metadata.
+
+2. **Join Company**
+   - User chooses requested role: `EMPLOYEE`, `DEPT_HEAD`, or `ASSET_MANAGER`.
+   - User enters the role join code.
+   - Frontend first calls `POST /onboarding/join/validate-code`.
+   - If the code is invalid, frontend must not call Supabase signup, so no email is sent.
+   - If valid, backend creates a pending join request and returns a `signup_ticket`.
+   - After Supabase email verification / first login, the user only sees Pending Approval.
+   - Admin approves/rejects from Organization/Dashboard.
 
 **Local dev without Supabase:** the backend accepts tokens signed with the same
 `SUPABASE_JWT_SECRET`. Generate one per demo user:
@@ -94,6 +120,9 @@ pending-transfer-exists, open-maintenance-exists, cycle-closed).
 | Enum | Values |
 |---|---|
 | `role` | `ADMIN`, `ASSET_MANAGER`, `DEPT_HEAD`, `EMPLOYEE` |
+| `join_code_role` | `EMPLOYEE`, `ASSET_MANAGER`, `DEPT_HEAD` |
+| `employee_access_status` | `PENDING_APPROVAL`, `ACTIVE`, `REJECTED`, `SUSPENDED` |
+| `signup_request_status` | `PENDING_EMAIL_VERIFICATION`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `EXPIRED` |
 | `record_status` | `ACTIVE`, `INACTIVE` |
 | `asset_status` | `AVAILABLE`, `ALLOCATED`, `RESERVED`, `UNDER_MAINTENANCE`, `LOST`, `RETIRED`, `DISPOSED` |
 | `asset_condition` | `NEW`, `GOOD`, `FAIR`, `POOR`, `DAMAGED` |
@@ -112,6 +141,99 @@ pending-transfer-exists, open-maintenance-exists, cycle-closed).
 
 Role column = who may call it. "any" = any authenticated employee.
 
+### 4.0 Public onboarding
+
+These endpoints do **not** require a bearer token. They exist so role-code validation
+happens before Supabase sends an email.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/onboarding/workspaces` | public | Create a new company/workspace and first Admin signup ticket. |
+| POST | `/onboarding/join/validate-code` | public | Validate selected role + join code before Supabase signup. |
+
+`POST /onboarding/workspaces`
+
+Request:
+```jsonc
+{
+  "company_name": "Acme Operations",
+  "admin_full_name": "Aarav Admin",
+  "admin_email": "admin@acme.com"
+}
+```
+
+Response `201`:
+```jsonc
+{
+  "organization_id": "uuid",
+  "organization_name": "Acme Operations",
+  "admin_employee_id": "uuid",
+  "signup_ticket": "opaque-single-use-ticket",
+  "role_codes": [
+    { "role": "EMPLOYEE", "code": "AF-EMP-..." },
+    { "role": "DEPT_HEAD", "code": "AF-DH-..." },
+    { "role": "ASSET_MANAGER", "code": "AF-AM-..." }
+  ]
+}
+```
+
+Frontend rule: after this succeeds, call Supabase `signUp` with:
+```jsonc
+{
+  "email": "admin@acme.com",
+  "password": "...",
+  "options": {
+    "data": {
+      "signup_ticket": "opaque-single-use-ticket",
+      "onboarding_flow": "CREATE_COMPANY"
+    }
+  }
+}
+```
+
+`POST /onboarding/join/validate-code`
+
+Request:
+```jsonc
+{
+  "full_name": "Priya Sharma",
+  "email": "priya@acme.com",
+  "requested_role": "DEPT_HEAD",
+  "role_code": "AF-DH-..."
+}
+```
+
+Response `200`:
+```jsonc
+{
+  "organization_id": "uuid",
+  "organization_name": "Acme Operations",
+  "requested_role": "DEPT_HEAD",
+  "signup_request_id": "uuid",
+  "signup_ticket": "opaque-single-use-ticket",
+  "requires_admin_approval": true
+}
+```
+
+Invalid code / mismatched selected role response:
+```jsonc
+{
+  "detail": "Invalid join code for selected role.",
+  "code": "invalid_join_code"
+}
+```
+
+Frontend rule: only call Supabase `signUp` if this endpoint returns `200`.
+If it returns `403`/`404`, show the error and do not send a verification email.
+The Supabase metadata must include:
+```jsonc
+{
+  "signup_ticket": "opaque-single-use-ticket",
+  "signup_request_id": "uuid",
+  "onboarding_flow": "JOIN_COMPANY"
+}
+```
+
 ### 4.1 Accounts & roles
 
 | Method | Path | Role | Notes |
@@ -121,13 +243,40 @@ Role column = who may call it. "any" = any authenticated employee.
 | POST | `/employees` | ADMIN | Pre-provision a directory row (role is always EMPLOYEE). |
 | GET | `/employees/{id}` | any | |
 | PATCH | `/employees/{id}` | ADMIN | Body: `{full_name?, department_id?, status?}` |
-| POST | `/employees/{id}/role` | ADMIN | Body: `{role}`. The ONLY way a role changes; logs + notifies. |
+| POST | `/employees/{id}/role` | ADMIN | Body: `{role}`. Manual Admin override for active users; logs + notifies. |
+| GET | `/join-codes` | ADMIN | Current organization's join codes by role. Masked except immediately after creation/rotation. |
+| POST | `/join-codes/{role}/rotate` | ADMIN | Revoke old code and return one new plaintext code for that role. |
+| GET | `/join-requests?status=` | ADMIN | Pending/approved/rejected join requests for this organization. |
+| POST | `/join-requests/{id}/approve` | ADMIN | Activates user and grants requested role. |
+| POST | `/join-requests/{id}/reject` | ADMIN | Rejects request; user remains blocked from company data. |
 
 `EmployeeOut`:
 ```jsonc
-{ "id","full_name","email","role","status","department_id","department_name","auth_uid","created_at" }
+{ "id","full_name","email","role","requested_role","access_status","status",
+  "department_id","department_name","auth_uid","created_at" }
 ```
 `MeOut` = `EmployeeOut` + `org_id`.
+
+Pending users:
+- `/me` returns `access_status="PENDING_APPROVAL"` plus the organization name.
+- Business endpoints should return `403` with `code="approval_pending"`.
+- Frontend routes should show only the Pending Approval screen and sign-out.
+
+`JoinCodeOut`:
+```jsonc
+{ "id","role","masked_code","last_rotated_at","expires_at","status","created_at" }
+```
+
+`RotateJoinCodeOut`:
+```jsonc
+{ "id","role","code","expires_at","status" }
+```
+
+`JoinRequestOut`:
+```jsonc
+{ "id","organization_id","full_name","email","requested_role","status",
+  "employee_id","created_at","decided_by_id","decided_at","decision_note" }
+```
 
 ### 4.2 Organization (master data)
 
@@ -275,3 +424,6 @@ Status stepper: `PENDING → APPROVED → ASSIGNED → IN_PROGRESS → RESOLVED`
   routers live against local Postgres; both flagship 409s verified; seed + mint_token commands.
   Pending external setup (not blocking frontend): Supabase project (swap JWT secret), Storage buckets
   (photo uploads currently accept a `photo_url` string), HF Spaces + Vercel deploy.
+- **v1.1 onboarding update** — replaces manual first-Admin provisioning with Create Company,
+  adds role join-code validation before Supabase signup email, and adds Admin approval/rejection
+  for Employee / Department Head / Asset Manager join requests.

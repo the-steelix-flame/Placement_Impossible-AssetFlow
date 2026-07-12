@@ -28,10 +28,11 @@ backend/
 │   └── wsgi.py               # gunicorn target
 │
 ├── core/                     # cross-cutting code every app imports — NO business logic here
-│   ├── auth.py               # SupabaseAuth(HttpBearer): verifies the Supabase JWT signature
-│   │                         # (SUPABASE_JWT_SECRET), loads the Employee row by auth_uid,
-│   │                         # attaches request.employee. Auto-creates the Employee row on
-│   │                         # first login (role=EMPLOYEE, never anything else).
+│   ├── auth.py               # SupabaseAuth(HttpBearer): verifies real Supabase JWTs
+│   │                         # via JWKS (ES256/RS256) and local dev tokens via HS256,
+│   │                         # links onboarding signup tickets to auth_uid, loads
+│   │                         # request.employee, and blocks non-approved users from
+│   │                         # company data except /me + pending-approval state.
 │   ├── permissions.py        # require_role("ADMIN", "ASSET_MANAGER") decorator + role
 │   │                         # constants. All role checks flow through this one file.
 │   ├── schemas.py            # shared Ninja schemas: PaginatedOut, MessageOut, ConflictOut
@@ -59,15 +60,21 @@ backend/
     │                         #   admin.py    → Django admin registration
     │                         #   migrations/
     │
-    ├── accounts/             # Employee model, auth bridge, role management
-    │   ├── models.py         #   Employee (auth_uid, role, department, status)
+    ├── accounts/             # Employee model, auth bridge, access approval, role management
+    │   ├── models.py         #   Employee (auth_uid, role, requested_role, access_status,
+    │   │                     #   department, status)
     │   ├── api.py            #   GET /me · GET/PATCH /employees · POST /employees/{id}/role
-    │   └── services.py       #   promote/demote (Admin only, logs ROLE_CHANGED + notifies)
+    │   │                     #   GET/approve/reject /join-requests
+    │   └── services.py       #   approve/reject join requests, promote/demote (Admin only,
+    │                         #   logs ROLE_CHANGED + notifies)
     │
-    ├── organization/         # master data
-    │   ├── models.py         #   Department (parent, head), AssetCategory (field_schema JSONB)
-    │   ├── api.py            #   CRUD /departments · CRUD /asset-categories
-    │   └── services.py       #   deactivation guards (can't deactivate a dept holding assets)
+    ├── organization/         # workspace + master data
+    │   ├── models.py         #   Organization, RoleJoinCode, SignupRequest,
+    │   │                     #   Department (parent, head), AssetCategory (field_schema JSONB)
+    │   ├── api.py            #   public onboarding endpoints, join-code rotation,
+    │   │                     #   CRUD /departments · CRUD /asset-categories
+    │   └── services.py       #   create company, validate role code, hash/rotate codes,
+    │                         #   deactivation guards (can't deactivate a dept holding assets)
     │
     ├── assets/               # registry + lifecycle
     │   ├── models.py         #   Asset, AssetDocument
@@ -118,6 +125,22 @@ backend/
 2. Only `apps/assets/services.py:transition()` mutates `asset.status`. Grep-able guarantee.
 3. Every service mutation calls `log_activity()` and (where a person is affected) `notify()` in the same transaction.
 4. Ninja schemas never share a name with a model (`AssetIn`/`AssetOut`, never `Asset`).
+5. Onboarding must validate role codes before Supabase signup sends email. Invalid role code means no Supabase call.
+6. Business routers must reject `access_status != ACTIVE`; `/me` and pending-approval reads are the only exceptions.
+
+### Backend onboarding responsibilities
+
+Dev A owns the backend flow end to end:
+
+1. `POST /onboarding/workspaces` creates `Organization`, first `Employee(role=ADMIN, access_status=ACTIVE)`,
+   role join codes, and a single-use signup ticket in one transaction.
+2. `POST /onboarding/join/validate-code` verifies selected role + role code, creates `SignupRequest`,
+   creates/links a pending employee row, and returns a single-use signup ticket.
+3. `core/auth.py` reads the Supabase token metadata on first login, verifies the signup ticket, links `auth_uid`,
+   and returns `/me`.
+4. Pending users get `/me` only. They must not receive asset/org data until Admin approval.
+5. Admin endpoints rotate role codes and approve/reject join requests. Every decision writes activity log rows
+   and notifies the affected user.
 
 ---
 
@@ -146,7 +169,12 @@ frontend/
     │   ├── (auth)/           # ── Dev B ── public, minimal centered-card layout
     │   │   ├── layout.tsx
     │   │   ├── login/page.tsx           # email+password via lib/supabase.ts
-    │   │   ├── signup/page.tsx          # name/email/password ONLY — no role field exists
+    │   │   ├── signup/page.tsx          # choice screen: Create Company vs Join Company
+    │   │   ├── create-company/page.tsx  # creates organization + first Admin signup ticket,
+    │   │   │                           # then calls Supabase signup
+    │   │   ├── join-company/page.tsx    # requested role + role code; validates backend
+    │   │   │                           # BEFORE Supabase signup sends an email
+    │   │   ├── pending-approval/page.tsx # shown after login while access_status is pending
     │   │   └── forgot-password/page.tsx # Supabase resetPasswordForEmail
     │   │
     │   └── (app)/            # authenticated shell — layout.tsx renders AppSidebar + Topbar
@@ -157,7 +185,8 @@ frontend/
     │       ├── organization/            # ── Dev B ── Admin only (guarded by role from /me)
     │       │   ├── page.tsx             # tab switcher
     │       │   └── _components/         # DepartmentsTab, CategoriesTab, DirectoryTab,
-    │       │                            # PromoteRoleDialog (the ONLY place roles change)
+    │       │                            # JoinCodesPanel, JoinRequestsQueue,
+    │       │                            # PromoteRoleDialog (manual Admin override only)
     │       │
     │       ├── assets/                  # ── Dev B ──
     │       │   ├── page.tsx             # directory: DataTable + search/filter bar
@@ -213,13 +242,15 @@ frontend/
     │   ├── api.ts            # fetch wrapper: baseURL from env, attaches Supabase JWT,
     │   │                     # unwraps envelope, throws typed ApiError (409 → ConflictError
     │   │                     # carrying {holder, suggestion} for the conflict modal)
-    │   ├── types.ts          # TS mirror of docs/api-contract.md — enums + entity types.
+    │   ├── types.ts          # TS mirror of docs/api-contract.md — enums + entity types,
+    │   │                     # including EmployeeAccessStatus, SignupRequest, JoinCode.
     │   │                     # Screens import from here, NEVER redefine locally.
     │   ├── constants.ts      # status→color/label maps, nav config, role constants
     │   └── utils.ts          # cn(), date formatting, tag formatting
     │
     └── hooks/                # ── Dev B owns; shared TanStack Query hooks ──
-        ├── useMe.ts          # current employee + role (drives nav + guards)
+        ├── useMe.ts          # current employee + role + access_status (drives nav,
+        │                     # guards, and pending-approval redirect)
         ├── useApiQuery.ts    # thin typed wrappers over useQuery/useMutation + toast-on-error
         └── (screen-specific hooks live in that screen's _components/, not here)
 ```
@@ -230,6 +261,24 @@ frontend/
 3. Screen-local components live in that screen's `_components/` folder (underscore = not a route).
 4. Every list screen ships loading, empty, and error states (use `EmptyState`, skeletons from `ui/`).
 5. Role gating in UI is convenience only — the backend decorator is the real guard.
+6. Join Company must call backend code validation before Supabase signup. If validation fails, do not call Supabase.
+7. If `/me.access_status` is `PENDING_APPROVAL`, redirect to `/pending-approval` and hide all app data.
+
+### Frontend onboarding responsibilities
+
+Dev B owns the frontend flow:
+
+1. `/signup` becomes a choice page with two clear actions: Create Company and Join Company.
+2. `/create-company` collects company/admin details, calls `/onboarding/workspaces`, then calls Supabase signup
+   with the returned signup ticket.
+3. `/join-company` collects full name, email, requested role, and role code. It calls
+   `/onboarding/join/validate-code` first. Only on success does it call Supabase signup.
+4. `/pending-approval` is the only app-like screen pending users can see after login. It explains that the Admin
+   must approve access and offers sign-out.
+5. Organization gains Join Codes and Join Requests panels for Admin:
+   - Copy/regenerate codes for Employee, Department Head, Asset Manager.
+   - Approve/reject pending users.
+   - Show audit trail / decision note when available.
 
 ---
 
@@ -268,7 +317,7 @@ frontend/
 ### E. Sync-point ritual (H2, H5, H7)
 1. Merge order **A → B → C** into `main` (backend lands first so frontend merges compile).
 2. Each person: `git checkout main && git pull`, run the app once, confirm the sync goal
-   (e.g. SYNC 1 = signup→login→org CRUD works end-to-end).
+   (e.g. SYNC 1 = create company -> first Admin, join code -> pending user, Admin approval -> app access).
 3. Everyone back on their branch: `git rebase main`. Nobody codes on a pre-sync base.
 
 ### F. Definition of done per feature (checklist before you call it finished)
