@@ -15,12 +15,73 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAllocateAsset } from "./useAllocations";
+import { useRequestTransfer } from "./useTransfers";
+import { ConflictModal } from "./ConflictModal";
+import { ConflictApiError } from "@/lib/api";
 
 export function AllocateDialog({ children }: { children: React.ReactNode }) {
   const [date, setDate] = React.useState<Date>();
+  const [assetId, setAssetId] = React.useState("af0114");
+  const [assigneeId, setAssigneeId] = React.useState("emp1");
+  const [isOpen, setIsOpen] = React.useState(false);
+  
+  const [conflictData, setConflictData] = React.useState<{ holder: string; holder_id: string } | null>(null);
+  const [isConflictModalOpen, setIsConflictModalOpen] = React.useState(false);
+
+  const allocateMutation = useAllocateAsset();
+  const requestTransferMutation = useRequestTransfer();
+
+  const handleSubmit = () => {
+    // Determine if it's an employee or department ID (simplistic check for mock)
+    const isDept = assigneeId.startsWith("dept");
+    
+    allocateMutation.mutate(
+      {
+        asset_id: assetId,
+        ...(isDept ? { department_id: assigneeId } : { employee_id: assigneeId }),
+        expected_return_date: date ? format(date, "yyyy-MM-dd") : undefined,
+      },
+      {
+        onSuccess: () => {
+          setIsOpen(false);
+          // show success toast
+        },
+        onError: (error) => {
+          if (error instanceof ConflictApiError && error.conflictData.holder) {
+            setConflictData({
+              holder: error.conflictData.holder,
+              holder_id: error.conflictData.holder_id || "unknown",
+            });
+            setIsConflictModalOpen(true);
+          } else {
+            // show error toast
+            console.error(error);
+          }
+        },
+      }
+    );
+  };
+
+  const handleRequestTransfer = () => {
+    setIsConflictModalOpen(false);
+    requestTransferMutation.mutate(
+      {
+        asset_id: assetId,
+        reason: "Requested transfer due to conflict during allocation attempt.",
+      },
+      {
+        onSuccess: () => {
+          setIsOpen(false);
+          // show transfer requested toast
+        },
+      }
+    );
+  };
 
   return (
-    <Dialog>
+    <>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -34,7 +95,7 @@ export function AllocateDialog({ children }: { children: React.ReactNode }) {
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
             <label className="text-sm font-medium">Asset</label>
-            <Select>
+            <Select value={assetId} onValueChange={setAssetId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select asset" />
               </SelectTrigger>
@@ -46,7 +107,7 @@ export function AllocateDialog({ children }: { children: React.ReactNode }) {
           </div>
           <div className="grid gap-2">
             <label className="text-sm font-medium">Assign To</label>
-            <Select>
+            <Select value={assigneeId} onValueChange={setAssigneeId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select recipient" />
               </SelectTrigger>
@@ -83,9 +144,19 @@ export function AllocateDialog({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <DialogFooter>
-          <Button type="submit">Confirm Allocation</Button>
+          <Button type="button" onClick={handleSubmit} disabled={allocateMutation.isPending}>
+            {allocateMutation.isPending ? "Allocating..." : "Confirm Allocation"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ConflictModal 
+      isOpen={isConflictModalOpen}
+      onClose={() => setIsConflictModalOpen(false)}
+      holderName={conflictData?.holder || "Unknown User"}
+      onRequestTransfer={handleRequestTransfer}
+    />
+    </>
   );
 }
