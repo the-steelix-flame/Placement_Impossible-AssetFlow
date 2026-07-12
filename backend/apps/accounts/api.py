@@ -30,7 +30,7 @@ def me(request):
 @router.get("/employees", response=list[EmployeeOut])
 @require_active
 def list_employees(request, search: str | None = None, role: str | None = None):
-    qs = Employee.objects.filter(org=request.employee.org).select_related("department")
+    qs = Employee.objects.filter(org=request.employee.org).select_related("department", "org")
     if search:
         qs = qs.filter(full_name__icontains=search) | qs.filter(email__icontains=search)
     if role:

@@ -10,7 +10,7 @@ from core.services.notify import notify
 
 
 def get_employee(org, employee_id) -> Employee:
-    emp = Employee.objects.filter(org=org, id=employee_id).select_related("department").first()
+    emp = Employee.objects.filter(org=org, id=employee_id).select_related("department", "org").first()
     if not emp:
         raise NotFound("Employee not found.")
     return emp
