@@ -14,20 +14,53 @@ from __future__ import annotations
 
 import jwt
 from django.conf import settings
+from jwt import PyJWKClient
 from ninja.security import HttpBearer
+
+# Cached JWKS client (fetches + caches Supabase's public ES256/RS256 keys).
+_jwks_client: PyJWKClient | None = None
+
+
+def _get_jwks_client() -> PyJWKClient | None:
+    global _jwks_client
+    if _jwks_client is None and settings.SUPABASE_JWKS_URL:
+        _jwks_client = PyJWKClient(settings.SUPABASE_JWKS_URL, cache_keys=True)
+    return _jwks_client
+
+
+def _verify_token(token: str) -> dict | None:
+    """Verify a Supabase user JWT, routing by its `alg` header.
+
+    ES256/RS256 → real Supabase tokens, verified against the public JWKS.
+    HS256       → local `mint_token` dev tokens, verified with the shared secret.
+    """
+    try:
+        alg = jwt.get_unverified_header(token).get("alg")
+    except jwt.InvalidTokenError:
+        return None
+
+    common = {
+        "audience": settings.SUPABASE_JWT_AUD,
+        "options": {"require": ["sub"]},
+    }
+    try:
+        if alg in ("ES256", "RS256"):
+            client = _get_jwks_client()
+            if client is None:
+                return None
+            key = client.get_signing_key_from_jwt(token).key
+            return jwt.decode(token, key, algorithms=[alg], **common)
+        if alg == "HS256":
+            return jwt.decode(token, settings.SUPABASE_JWT_SECRET, algorithms=["HS256"], **common)
+    except Exception:
+        return None
+    return None
 
 
 class SupabaseAuth(HttpBearer):
     def authenticate(self, request, token: str):
-        try:
-            payload = jwt.decode(
-                token,
-                settings.SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                audience=settings.SUPABASE_JWT_AUD,
-                options={"require": ["sub"]},
-            )
-        except jwt.InvalidTokenError:
+        payload = _verify_token(token)
+        if payload is None:
             return None
 
         auth_uid = payload.get("sub")
