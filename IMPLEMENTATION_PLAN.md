@@ -207,4 +207,6 @@ These are **not** built during the hackathon, but the schema and code structure 
 
 ---
 
-*Companion document: [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md) — full PostgreSQL schema with constraints, triggers, and reasoning.*
+*Companion documents:*
+- *[`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md) — full PostgreSQL schema with constraints, triggers, and reasoning.*
+- *[`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) — complete backend & frontend file trees with per-file responsibilities, plus the session-by-session working protocol (start ritual, build order, stop-and-ask triggers, hourly commit ritual, sync-point ritual).*
