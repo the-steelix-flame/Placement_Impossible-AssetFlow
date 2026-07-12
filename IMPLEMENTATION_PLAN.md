@@ -31,12 +31,37 @@ Smaller differentiators (cheap to build, big demo value):
 | Auth | **Supabase Auth** (email+password, forgot password emails) | Supabase |
 | File storage | Supabase Storage (asset photos, maintenance photos, documents) | Supabase |
 
-**Auth flow (important — everyone read this):**
+**Workspace onboarding + auth flow (important - everyone read this):**
 
-1. Frontend signs up / logs in via `@supabase/supabase-js`. Signup **always** creates a plain Employee — no role field exists on the signup form at all.
-2. Frontend sends the Supabase JWT as `Authorization: Bearer <token>` to Django Ninja.
-3. Backend verifies the JWT against the Supabase JWT secret (an `HttpBearer` auth class in Ninja), then loads the matching `employees` row by `auth_uid` to resolve **role** (Admin / Asset Manager / Department Head / Employee). Roles live in **our** Postgres table, never in the client token claims — so roles can only be changed via the Admin-only Employee Directory endpoint.
-4. Role-based permission decorators on every router (`@require_role("ADMIN")` etc.).
+We are replacing the manual "developer creates the first Admin" flow with self-serve company onboarding.
+There are now two separate auth entry points, because mixing them into one role dropdown would look unsafe
+and would conflict with the hackathon requirement for realistic, non-self-elevating account creation.
+
+1. **Create Company / Workspace** is the only path that creates an Admin automatically.
+   - A new organization signs up with company name, admin name, admin email, and password.
+   - The backend creates the `organizations` row and a first `employees` row with `role=ADMIN`.
+   - The frontend then calls Supabase signup with a backend-issued signup ticket in `user_metadata`.
+   - After email verification / first login, the backend links the Supabase `auth_uid` to that Admin row.
+   - This removes our manual dependency as developers while still making "Admin" tied to owning a new company.
+
+2. **Join Company** is the path for `EMPLOYEE`, `DEPT_HEAD`, and `ASSET_MANAGER`.
+   - The Admin sees a Join Codes panel with one code per joinable role:
+     `EMPLOYEE`, `DEPT_HEAD`, and `ASSET_MANAGER`.
+   - The joining user chooses the requested role and enters the exact matching code.
+   - The backend validates the role code **before** the frontend calls Supabase signup. If the code is wrong,
+     no Supabase email verification is sent.
+   - A correct code only creates a `PENDING_APPROVAL` join request / employee access record. It does not grant
+     access to company data yet.
+   - After login, pending users only see a "Pending approval" screen until the Admin approves them.
+   - Admin approval activates the employee and grants the requested role; rejection blocks access.
+
+3. Frontend sends the Supabase JWT as `Authorization: Bearer <token>` to Django Ninja.
+4. Backend verifies real Supabase user tokens with the public JWKS (ES256/RS256) and still accepts local
+   HS256 `mint_token` tokens for dev testing.
+5. Backend loads the matching employee by `auth_uid` / signup ticket and resolves **role + access status**
+   from our Postgres tables. Roles are never trusted from token claims.
+6. Role-based permission decorators (`@require_role("ADMIN")` etc.) must also reject users whose access status
+   is not approved/active, except for `/me` and the pending-approval read path.
 
 **Repo layout (monorepo, one repo, hard ownership boundaries):**
 
@@ -44,7 +69,7 @@ Smaller differentiators (cheap to build, big demo value):
 /frontend            → Next.js app                    (Dev B + Dev C, split by folder below)
 /backend             → Django project                 (Dev A only)
   /apps/accounts       auth bridge, employees, roles
-  /apps/organization   departments, categories
+  /apps/organization   workspaces, departments, categories, role join codes
   /apps/assets         assets, documents, lifecycle
   /apps/allocation     allocations, transfers, returns
   /apps/booking        resource bookings
@@ -67,11 +92,12 @@ The split is **by directory ownership**, not by feature. Two people never edit t
 ### 🟦 Dev A — Backend & Infrastructure (owns `/backend`, `/docs/api-contract.md`)
 
 - Django + Ninja project scaffold with uv (`pyproject.toml`, `uv.lock`), Dockerfile for HF Spaces
-- Supabase JWT verification + role resolution middleware, `@require_role` decorators
+- Workspace onboarding APIs: create company, validate role code before Supabase signup, pending-approval join requests, Admin approval/rejection, role-code rotation
+- Supabase JWT verification + role/access-status resolution middleware, `@require_role` decorators
 - All Django models mirroring `docs/DATABASE_SCHEMA.md`, plus a migration that installs the raw-SQL constraints/triggers (`RunSQL`)
 - All API routers: organization, employees/roles, assets, allocation/transfer, booking (overlap logic), maintenance workflow, audits, notifications, dashboard KPIs, reports
 - Django Admin registration (employee bulk-add for the demo)
-- Seed script (`manage.py seed_demo`): 1 org, 5 departments, 8 categories, ~40 assets, demo users for each role
+- Seed script (`manage.py seed_demo`): 1 org, Admin-owned role codes, 5 departments, 8 categories, ~40 assets, demo users for each role
 - Maintains `docs/api-contract.md` — **the only file the other two read from his lane; they never edit it, they raise it in the group chat if something is missing**
 
 ### 🟩 Dev B — Frontend Foundation & Core Screens (owns `frontend/` shell + these routes)
@@ -79,7 +105,7 @@ The split is **by directory ownership**, not by feature. Two people never edit t
 - Next.js scaffold, Tailwind + shadcn/ui setup, theme, layout (sidebar/topbar), protected-route wrapper
 - **`frontend/src/lib/`** — Supabase client, typed API client (fetch wrapper reading the JWT), TanStack Query setup, shared types generated from the api-contract. *Dev B owns `lib/`; Dev C consumes it. If Dev C needs a helper, they message Dev B — they don't edit `lib/`.*
 - Shared UI primitives in `frontend/src/components/shared/` (DataTable, StatusBadge, ConfirmDialog, EmptyState, PageHeader)
-- Screens: **Login/Signup + forgot password** (`/auth`), **Dashboard + KPI cards** (`/dashboard`), **Organization Setup 3 tabs** (`/organization`), **Asset Registration & Directory + Asset Passport detail page** (`/assets`), command palette
+- Screens: **Login + Create Company + Join Company + Pending Approval + forgot password** (`/auth`), **Dashboard + KPI cards** (`/dashboard`), **Organization Setup 4 tabs** (`/organization`: departments, categories, directory, join approvals/codes), **Asset Registration & Directory + Asset Passport detail page** (`/assets`), command palette
 
 ### 🟨 Dev C — Frontend Workflow Screens (owns these routes only)
 
@@ -130,10 +156,10 @@ Deployment happens at **H7, not the final hour** — never demo from localhost w
 
 | Hour | Dev A (backend) | Dev B (frontend core) | Dev C (frontend flows) |
 |---|---|---|---|
-| H1 | uv + Django + Ninja scaffold boots; Supabase DB connected; JWT auth bridge + role guards | Next.js + Tailwind + shadcn scaffold; Supabase auth client; login/signup pages | Route stubs for all workflow screens; booking calendar layout (static data) |
-| H2 | organization apps: departments, categories, employees — models, migrations, CRUD APIs | App shell (sidebar/topbar/protected routes); `lib/` API client + types; forgot-password | Allocation + maintenance screen layouts (static data) |
-| **SYNC 1 (end of H2)**: auth works end-to-end, org CRUD live — merge A→B→C into `main`, everyone rebases |
-| H3 | assets app: models, tag trigger, schema.sql constraints migration, CRUD + search/filter APIs | Organization Setup — all 3 tabs (departments, categories, directory + promote) | Wire allocation to live API: conflict modal ("held by Priya"), transfer request flow |
+| H1 | uv + Django + Ninja scaffold boots; Supabase DB connected; JWKS auth bridge + role/access guards | Next.js + Tailwind + shadcn scaffold; Supabase auth client; login/create-company/join-company pages | Route stubs for all workflow screens; booking calendar layout (static data) |
+| H2 | organization/apps: workspace creation, role join codes, pending approvals, departments, categories, employees — models, migrations, CRUD APIs | App shell (sidebar/topbar/protected routes); `lib/` API client + types; forgot-password + pending-approval screen | Allocation + maintenance screen layouts (static data) |
+| **SYNC 1 (end of H2)**: create company -> first Admin, join code -> pending user, Admin approval, org CRUD live — merge A→B→C into `main`, everyone rebases |
+| H3 | assets app: models, tag trigger, schema.sql constraints migration, CRUD + search/filter APIs | Organization Setup — departments, categories, directory, join approvals/codes | Wire allocation to live API: conflict modal ("held by Priya"), transfer request flow |
 | H4 | Allocation + transfer + return APIs (409 conflict rule); booking APIs (exclusion constraint + next-slot) | Asset registration form + photo upload; asset directory table + filters | Wire booking calendar: create/cancel, overlap-rejection UX + smart slot suggestion |
 | H5 | Maintenance workflow APIs + asset status automation; audit cycle APIs + discrepancy generation | Asset Passport detail page (unified timeline); dashboard KPI cards (live) | Maintenance flow end-to-end: raise → approve/reject → assign → resolve |
 | **SYNC 2 (end of H5)**: register → allocate → book → maintain demo path works — merge, rebase |
@@ -153,6 +179,20 @@ Deployment happens at **H7, not the final hour** — never demo from localhost w
 
 ## 5. Module Build Notes (the tricky parts, decided up front)
 
+- **Workspace bootstrap / first Admin**: first user does not self-select Admin inside a generic signup.
+  They create a new company/workspace. The backend creates the organization, an Admin employee row,
+  and the initial role join codes in one transaction. Supabase signup happens only after the backend
+  returns a signup ticket. On first verified login, the auth bridge links `auth_uid` to that Admin row.
+- **Role join codes**: every organization has one active high-entropy code for each joinable role:
+  `EMPLOYEE`, `DEPT_HEAD`, and `ASSET_MANAGER`. Codes are scoped to one organization and one role,
+  stored hashed in the database, and can be rotated/revoked by Admin. A code is only an invitation,
+  not permission to access data.
+- **Pre-email validation**: Join Company calls the backend first with `{requested_role, role_code,
+  email, full_name}`. If the selected role and code do not match, the backend returns 403/404 and
+  the frontend must not call Supabase signup, so no verification email is sent.
+- **Pending approval**: successful join-code validation creates a pending signup/join request.
+  After email verification and login, the user sees only a pending-approval page until an Admin
+  approves. Admin approval activates the employee and grants the requested role. Rejection blocks access.
 - **Double-allocation block**: DB partial unique index `UNIQUE(asset_id) WHERE returned_at IS NULL` on `allocations`. API catches the violation and responds `409` with `{holder: "Priya Sharma", suggestion: "TRANSFER"}` → frontend renders the transfer CTA.
 - **Booking overlap**: Postgres `EXCLUDE USING gist (asset_id WITH =, tstzrange(starts_at, ends_at) WITH &&) WHERE (status = 'CONFIRMED')`. Back-to-back bookings (10:00 end / 10:00 start) are allowed because ranges are half-open `[)`. `409` response includes the computed next free slot.
 - **Booking statuses** Upcoming/Ongoing/Completed are **derived from time** at read-time; only `CONFIRMED/CANCELLED` are stored. No cron needed to flip statuses.
@@ -169,6 +209,7 @@ Deployment happens at **H7, not the final hour** — never demo from localhost w
 |---|---|---|---|
 | 1 | Create Supabase project; hand over `SUPABASE_URL`, `anon key`, `service_role key`, `JWT secret`, DB connection string (pooler, port 6543) | Dev A + Dev B | H1 (first 15 min) |
 | 2 | Enable Supabase email auth + configure password-reset redirect URL | Dev B | H1 |
+| 2a | Configure frontend redirect URLs for both Create Company and Join Company; no developer manually provisions the first Admin anymore | Dev A + Dev B | H1 |
 | 3 | Create Supabase Storage buckets `asset-photos`, `maintenance-photos`, `documents` | Dev A | H3 |
 | 4 | Create Hugging Face account + Docker Space; add env secrets in Space settings | Dev A | H7 |
 | 5 | Create Vercel project linked to this repo (`/frontend` root); set env vars | Dev B | H7 |
@@ -185,7 +226,7 @@ These are **not** built during the hackathon, but the schema and code structure 
 
 | Future feature | Groundwork in v1 |
 |---|---|
-| **Multi-tenancy (SaaS)** | `organizations` table exists from day one; every table carries `org_id`. v1 seeds exactly one org and hides it from the UI. |
+| **Multi-tenancy (SaaS)** | `organizations` table exists from day one; every table carries `org_id`. The new Create Company flow exposes this as workspace onboarding instead of hiding it. |
 | **QR/barcode scanning** | `assets.asset_tag` is stable and unique; a `qr_payload` convention (`assetflow:<tag>`) is documented. Directory search already accepts tag lookup — a scanner is just an input method. |
 | **Depreciation & finance hooks** | `acquisition_cost` + `acquisition_date` stored; `assets.custom_fields` JSONB can hold `salvage_value`/`useful_life_months` without migration. Explicitly **no** accounting logic in v1. |
 | **Procurement module** | Asset lifecycle enum leaves room before `AVAILABLE` (a future `ON_ORDER` state slots into the transition table config, not code rewrites). |
@@ -204,6 +245,7 @@ These are **not** built during the hackathon, but the schema and code structure 
 3. Screen handles loading / empty / error / forbidden states
 4. Action appears in the activity log; relevant notification generated
 5. Works against the deployed stack, not just localhost
+6. Onboarding-related features prove both security paths: company creator becomes first Admin, join-code users remain pending until Admin approval
 
 ---
 
