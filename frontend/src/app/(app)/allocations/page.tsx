@@ -9,6 +9,7 @@ import { ASSET_STATUS } from "@/lib/constants";
 import type { Allocation } from "@/lib/types";
 import { useAllocations } from "./_components/useAllocations";
 import { AllocateDialog } from "./_components/AllocateDialog";
+import { ReturnDialog } from "./_components/ReturnDialog";
 import { TransferQueue } from "./_components/TransferQueue";
 
 const columns = [
@@ -30,7 +31,14 @@ const columns = [
   {
     header: "Actions",
     accessorKey: "actions",
-    cell: () => <Button variant="outline" size="sm">Manage</Button>,
+    cell: (row: Allocation) =>
+      row.returned_at ? (
+        <span className="text-sm text-muted-foreground">Returned</span>
+      ) : (
+        <ReturnDialog allocationId={row.id}>
+          <Button variant="outline" size="sm">Return</Button>
+        </ReturnDialog>
+      ),
   },
 ];
 
