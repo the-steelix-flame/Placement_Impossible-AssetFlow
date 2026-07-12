@@ -95,7 +95,7 @@ export function AllocateDialog({ children }: { children: React.ReactNode }) {
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
             <label className="text-sm font-medium">Asset</label>
-            <Select value={assetId} onValueChange={setAssetId}>
+            <Select value={assetId} onValueChange={(value) => value && setAssetId(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select asset" />
               </SelectTrigger>
@@ -107,7 +107,7 @@ export function AllocateDialog({ children }: { children: React.ReactNode }) {
           </div>
           <div className="grid gap-2">
             <label className="text-sm font-medium">Assign To</label>
-            <Select value={assigneeId} onValueChange={setAssigneeId}>
+            <Select value={assigneeId} onValueChange={(value) => value && setAssigneeId(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select recipient" />
               </SelectTrigger>

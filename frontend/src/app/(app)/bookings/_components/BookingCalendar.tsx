@@ -59,6 +59,7 @@ export function BookingCalendar({ assetId }: { assetId: string }) {
           onCancel={() => setConflictData(null)} 
         />
       )}
+      {isLoading ? <div className="mb-3 rounded-lg border bg-card p-3 text-sm text-muted-foreground">Loading bookings...</div> : null}
       
       {/* Header */}
       <div className="grid grid-cols-6 border-b pb-2">

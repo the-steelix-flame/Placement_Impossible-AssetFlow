@@ -1,38 +1,58 @@
-import React from "react";
+"use client";
+
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { ASSET_STATUS, ASSET_CONDITION } from "@/lib/constants";
+import { ASSET_STATUS } from "@/lib/constants";
+import type { Allocation } from "@/lib/types";
 import { useAllocations } from "./_components/useAllocations";
 import { AllocateDialog } from "./_components/AllocateDialog";
 import { TransferQueue } from "./_components/TransferQueue";
 
+const columns = [
+  { header: "Asset Tag", accessorKey: "asset_tag", cell: (row: Allocation) => row.asset_tag ?? row.asset?.asset_tag ?? "-" },
+  { header: "Asset Name", accessorKey: "asset_name", cell: (row: Allocation) => row.asset_name ?? row.asset?.name ?? "-" },
+  {
+    header: "Current Holder",
+    accessorKey: "employee_name",
+    cell: (row: Allocation) => row.employee_name ?? row.employee?.full_name ?? row.department_name ?? row.department?.name ?? "-",
+  },
+  { header: "Expected Return", accessorKey: "expected_return_date", cell: (row: Allocation) => row.expected_return_date ?? "-" },
+  {
+    header: "Status",
+    accessorKey: "status",
+    cell: (row: Allocation) => (
+      <StatusBadge config={row.returned_at ? ASSET_STATUS.AVAILABLE : ASSET_STATUS.ALLOCATED} />
+    ),
+  },
+  {
+    header: "Actions",
+    accessorKey: "actions",
+    cell: () => <Button variant="outline" size="sm">Manage</Button>,
+  },
+];
+
+function AllocationTable({ state }: { state?: "active" | "overdue" | "returned" }) {
+  const { data = [], isLoading, isError } = useAllocations(state);
+
+  if (isLoading) {
+    return <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">Loading allocations...</div>;
+  }
+
+  if (isError) {
+    return <div className="rounded-lg border bg-card p-6 text-sm text-destructive">Could not load allocations.</div>;
+  }
+
+  return <DataTable columns={columns} data={data} />;
+}
+
 export default function AllocationsPage() {
-  const { data: activeAllocations = [], isLoading } = useAllocations("active");
-
-  const columns = [
-    { header: "Asset Tag", accessorKey: "asset_tag" },
-    { header: "Asset Name", accessorKey: "asset_name" },
-    { header: "Current Holder", accessorKey: "employee_name" },
-    { header: "Expected Return", accessorKey: "expected_return_date" },
-    { 
-      header: "Status", 
-      accessorKey: "status",
-      cell: (row: any) => <StatusBadge config={ASSET_STATUS[row.status as keyof typeof ASSET_STATUS]} />
-    },
-    {
-      header: "Actions",
-      accessorKey: "actions",
-      cell: () => <Button variant="outline" size="sm">Manage</Button>
-    }
-  ];
-
   return (
     <div className="container mx-auto py-6">
-      <PageHeader 
-        title="Allocations & Transfers" 
+      <PageHeader
+        title="Allocations & Transfers"
         description="Manage asset assignments and handle transfer requests."
       >
         <AllocateDialog>
@@ -48,13 +68,13 @@ export default function AllocationsPage() {
           <TabsTrigger value="transfers">Transfer Approvals</TabsTrigger>
         </TabsList>
         <TabsContent value="active">
-          {isLoading ? <div>Loading...</div> : <DataTable columns={columns} data={activeAllocations} />}
+          <AllocationTable state="active" />
         </TabsContent>
         <TabsContent value="overdue">
-          <DataTable columns={columns} data={[]} />
+          <AllocationTable state="overdue" />
         </TabsContent>
         <TabsContent value="returned">
-          <DataTable columns={columns} data={[]} />
+          <AllocationTable state="returned" />
         </TabsContent>
         <TabsContent value="transfers" className="pt-4">
           <TransferQueue />

@@ -1,13 +1,14 @@
 import React from "react";
-import { DataTable } from "@/components/shared/DataTable";
+import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useBookings, useCancelBooking } from "./useBookings";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import { BOOKING_STATUS } from "@/lib/constants";
+import type { Booking } from "@/lib/types";
 
 export function MyBookingsList() {
-  const { data: bookings = [], isLoading } = useBookings(undefined, undefined, undefined);
-  // Ideally we filter by mine=true but we just use all bookings for mock
+  const { data: bookings = [], isLoading } = useBookings(undefined, undefined, undefined, true);
   const myBookings = bookings;
   
   const cancelMutation = useCancelBooking();
@@ -16,32 +17,28 @@ export function MyBookingsList() {
     cancelMutation.mutate(id);
   };
 
-  const columns = [
-    { header: "Asset Tag", accessorKey: "asset_tag" },
+  const columns: DataTableColumn<Booking>[] = [
+    { header: "Asset Tag", accessorKey: "asset_tag", cell: (row) => row.asset_tag ?? row.asset?.asset_tag ?? "-" },
     { 
       header: "Starts At", 
       accessorKey: "starts_at",
-      cell: (row: any) => format(new Date(row.starts_at), "MMM d, h:mm a")
+      cell: (row) => format(new Date(row.starts_at), "MMM d, h:mm a")
     },
     { 
       header: "Ends At", 
       accessorKey: "ends_at",
-      cell: (row: any) => format(new Date(row.ends_at), "MMM d, h:mm a")
+      cell: (row) => format(new Date(row.ends_at), "MMM d, h:mm a")
     },
-    { header: "Purpose", accessorKey: "purpose" },
+    { header: "Purpose", accessorKey: "purpose", cell: (row) => row.purpose ?? "-" },
     { 
       header: "Status", 
       accessorKey: "status",
-      cell: (row: any) => <StatusBadge config={{ 
-        label: row.status, 
-        color: row.status === "CONFIRMED" ? "text-emerald-700" : "text-gray-700", 
-        bg: row.status === "CONFIRMED" ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200" 
-      }} />
+      cell: (row) => <StatusBadge config={BOOKING_STATUS[row.status]} />
     },
     {
       header: "Actions",
       accessorKey: "actions",
-      cell: (row: any) => (
+      cell: (row) => (
         row.status === "CONFIRMED" && (
           <Button 
             variant="outline" 

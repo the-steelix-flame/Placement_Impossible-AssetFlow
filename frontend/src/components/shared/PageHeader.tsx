@@ -1,7 +1,5 @@
 import React from "react";
-import { cn } from "@/lib/utils";
 
-// Dev B owns this component. This is a stub for Dev C to build against.
 export function PageHeader({
   title,
   description,
