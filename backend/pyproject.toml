@@ -1,0 +1,23 @@
+[project]
+name = "assetflow-backend"
+version = "0.1.0"
+description = "AssetFlow — Enterprise Asset & Resource Management API (Django + Django Ninja)"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.0,<5.2",
+    "django-ninja>=1.3",
+    "psycopg[binary]>=3.2",
+    "pyjwt>=2.9",
+    "python-dotenv>=1.0",
+    "django-cors-headers>=4.4",
+    "gunicorn>=23.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

@@ -1,0 +1,16 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+
+# Env / secrets — NEVER commit real credentials
+.env
+.env.local
+
+# Django
+*.log
+db.sqlite3
+staticfiles/
+media/
