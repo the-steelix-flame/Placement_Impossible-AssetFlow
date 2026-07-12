@@ -5,17 +5,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ASSET_STATUS, ASSET_CONDITION } from "@/lib/constants";
+import { useAllocations } from "./_components/useAllocations";
+import { AllocateDialog } from "./_components/AllocateDialog";
+import { TransferQueue } from "./_components/TransferQueue";
 
 export default function AllocationsPage() {
-  const activeAllocations = [
-    { id: "1", asset_tag: "AF-0114", asset_name: "MacBook Pro M3", holder: "Priya Sharma", expected_return: "2026-08-01", status: "ALLOCATED" }
-  ];
+  const { data: activeAllocations = [], isLoading } = useAllocations("active");
 
   const columns = [
     { header: "Asset Tag", accessorKey: "asset_tag" },
     { header: "Asset Name", accessorKey: "asset_name" },
-    { header: "Current Holder", accessorKey: "holder" },
-    { header: "Expected Return", accessorKey: "expected_return" },
+    { header: "Current Holder", accessorKey: "employee_name" },
+    { header: "Expected Return", accessorKey: "expected_return_date" },
     { 
       header: "Status", 
       accessorKey: "status",
@@ -34,7 +35,9 @@ export default function AllocationsPage() {
         title="Allocations & Transfers" 
         description="Manage asset assignments and handle transfer requests."
       >
-        <Button>Allocate Asset</Button>
+        <AllocateDialog>
+          <Button>Allocate Asset</Button>
+        </AllocateDialog>
       </PageHeader>
 
       <Tabs defaultValue="active" className="w-full">
@@ -45,7 +48,7 @@ export default function AllocationsPage() {
           <TabsTrigger value="transfers">Transfer Approvals</TabsTrigger>
         </TabsList>
         <TabsContent value="active">
-          <DataTable columns={columns} data={activeAllocations} />
+          {isLoading ? <div>Loading...</div> : <DataTable columns={columns} data={activeAllocations} />}
         </TabsContent>
         <TabsContent value="overdue">
           <DataTable columns={columns} data={[]} />
@@ -53,8 +56,8 @@ export default function AllocationsPage() {
         <TabsContent value="returned">
           <DataTable columns={columns} data={[]} />
         </TabsContent>
-        <TabsContent value="transfers">
-          <DataTable columns={columns} data={[]} />
+        <TabsContent value="transfers" className="pt-4">
+          <TransferQueue />
         </TabsContent>
       </Tabs>
     </div>
