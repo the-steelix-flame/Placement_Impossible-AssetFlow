@@ -68,9 +68,13 @@ export interface Employee {
   id: string;
   full_name: string;
   email: string;
+  auth_uid?: string | null;
+  org_id?: string;
+  department_name?: string | null;
   department_id: string | null;
   role: UserRole;
   status: RecordStatus;
+  created_at?: string;
 }
 
 export interface Department {
@@ -107,6 +111,42 @@ export interface Asset {
   is_bookable: boolean;
   photo_url: string | null;
   created_at: string;
+  updated_at?: string;
+}
+
+export interface PassportEvent {
+  at: string;
+  kind: string;
+  title: string;
+  detail: string;
+}
+
+export interface AssetPassport {
+  asset: Asset;
+  timeline: PassportEvent[];
+}
+
+export interface DashboardKpis {
+  total_assets: number;
+  assets_by_status: Partial<Record<AssetStatus, number>>;
+  available: number;
+  allocated: number;
+  under_maintenance: number;
+  active_allocations: number;
+  overdue_returns: number;
+  open_maintenance: number;
+  pending_maintenance: number;
+  upcoming_bookings: number;
+}
+
+export interface OverdueAllocation {
+  allocation_id: string;
+  asset_id: string;
+  asset_tag: string;
+  asset_name: string;
+  holder: string;
+  expected_return_date: string;
+  days_overdue: number;
 }
 
 export interface Allocation {
@@ -242,9 +282,14 @@ export interface PaginatedResponse<T> {
 
 export interface ConflictError {
   detail: string;
+  code?: string;
   holder?: string;
   holder_id?: string;
-  suggestion?: "TRANSFER";
+  suggestion?: "TRANSFER" | "NEXT_SLOT";
+  next_slot?: {
+    starts_at: string;
+    ends_at: string;
+  };
   next_available_slot?: {
     starts_at: string;
     ends_at: string;

@@ -1,13 +1,18 @@
 import React from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-// Dev B owns this component. This is a stub for Dev C to build against.
-export function DataTable({
+export type DataTableColumn<T extends object> = {
+  header: string;
+  accessorKey: (keyof T & string) | string;
+  cell?: (item: T) => React.ReactNode;
+};
+
+export function DataTable<T extends object>({
   columns,
   data,
 }: {
-  columns: { header: string; accessorKey: string; cell?: (item: any) => React.ReactNode }[];
-  data: any[];
+  columns: DataTableColumn<T>[];
+  data: T[];
 }) {
   return (
     <div className="rounded-md border">
@@ -28,10 +33,10 @@ export function DataTable({
             </TableRow>
           ) : (
             data.map((row, i) => (
-              <TableRow key={row.id || i}>
+              <TableRow key={(row as { id?: string }).id || i}>
                 {columns.map((col) => (
                   <TableCell key={col.accessorKey}>
-                    {col.cell ? col.cell(row) : row[col.accessorKey]}
+                    {col.cell ? col.cell(row) : String((row as Record<string, unknown>)[col.accessorKey] ?? "")}
                   </TableCell>
                 ))}
               </TableRow>

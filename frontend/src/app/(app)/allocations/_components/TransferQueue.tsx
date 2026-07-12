@@ -5,8 +5,18 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TRANSFER_STATUS } from "@/lib/constants";
 import { Check, X } from "lucide-react";
 
+type TransferRow = {
+  id: string;
+  asset_tag: string;
+  asset_name: string;
+  from: string;
+  to: string;
+  status: keyof typeof TRANSFER_STATUS;
+  date: string;
+};
+
 export function TransferQueue() {
-  const mockTransfers = [
+  const mockTransfers: TransferRow[] = [
     {
       id: "1",
       asset_tag: "AF-0114",
@@ -26,7 +36,7 @@ export function TransferQueue() {
     { 
       header: "Status", 
       accessorKey: "status",
-      cell: (row: any) => <StatusBadge config={TRANSFER_STATUS[row.status as keyof typeof TRANSFER_STATUS]} />
+      cell: (row: TransferRow) => <StatusBadge config={TRANSFER_STATUS[row.status]} />
     },
     {
       header: "Actions",

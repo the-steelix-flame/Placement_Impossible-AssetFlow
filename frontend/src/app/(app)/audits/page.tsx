@@ -5,8 +5,17 @@ import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { AUDIT_CYCLE_STATUS } from "@/lib/constants";
 
+type AuditCycleRow = {
+  id: string;
+  name: string;
+  scope: string;
+  starts_on: string;
+  ends_on: string;
+  status: keyof typeof AUDIT_CYCLE_STATUS;
+};
+
 export default function AuditsPage() {
-  const mockCycles = [
+  const mockCycles: AuditCycleRow[] = [
     {
       id: "1",
       name: "Q3 Engineering Asset Audit",
@@ -25,7 +34,7 @@ export default function AuditsPage() {
     { 
       header: "Status", 
       accessorKey: "status",
-      cell: (row: any) => <StatusBadge config={AUDIT_CYCLE_STATUS[row.status as keyof typeof AUDIT_CYCLE_STATUS]} />
+      cell: (row: AuditCycleRow) => <StatusBadge config={AUDIT_CYCLE_STATUS[row.status]} />
     },
     {
       header: "Actions",

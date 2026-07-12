@@ -20,6 +20,13 @@ interface StatusConfig {
   bg: string;
 }
 
+export const ROLE_LABELS: Record<import("./types").UserRole, string> = {
+  ADMIN: "Admin",
+  ASSET_MANAGER: "Asset Manager",
+  DEPT_HEAD: "Department Head",
+  EMPLOYEE: "Employee",
+};
+
 export const ASSET_STATUS: Record<AssetStatus, StatusConfig> = {
   AVAILABLE:         { label: "Available",         color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
   ALLOCATED:         { label: "Allocated",         color: "text-blue-700",    bg: "bg-blue-50 border-blue-200" },

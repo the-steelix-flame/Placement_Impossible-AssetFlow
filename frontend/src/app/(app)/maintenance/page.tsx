@@ -6,8 +6,18 @@ import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { MAINTENANCE_STATUS, MAINTENANCE_PRIORITY } from "@/lib/constants";
 
+type MaintenanceRow = {
+  id: string;
+  asset_name: string;
+  title: string;
+  priority: keyof typeof MAINTENANCE_PRIORITY;
+  status: keyof typeof MAINTENANCE_STATUS;
+  raised_by: string;
+  created_at: string;
+};
+
 export default function MaintenancePage() {
-  const mockRequests = [
+  const mockRequests: MaintenanceRow[] = [
     {
       id: "1",
       asset_name: "Coffee Machine",
@@ -25,12 +35,12 @@ export default function MaintenancePage() {
     { 
       header: "Priority", 
       accessorKey: "priority",
-      cell: (row: any) => <StatusBadge config={MAINTENANCE_PRIORITY[row.priority as keyof typeof MAINTENANCE_PRIORITY]} />
+      cell: (row: MaintenanceRow) => <StatusBadge config={MAINTENANCE_PRIORITY[row.priority]} />
     },
     { 
       header: "Status", 
       accessorKey: "status",
-      cell: (row: any) => <StatusBadge config={MAINTENANCE_STATUS[row.status as keyof typeof MAINTENANCE_STATUS]} />
+      cell: (row: MaintenanceRow) => <StatusBadge config={MAINTENANCE_STATUS[row.status]} />
     },
     { header: "Raised By", accessorKey: "raised_by" },
     {

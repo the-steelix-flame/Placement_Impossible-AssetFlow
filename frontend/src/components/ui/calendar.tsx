@@ -15,6 +15,7 @@ import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react
 function Calendar({
   className,
   classNames,
+  initialFocus: _initialFocus,
   showOutsideDays = true,
   captionLayout = "label",
   buttonVariant = "ghost",
@@ -24,7 +25,10 @@ function Calendar({
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+  initialFocus?: boolean
 }) {
+  void _initialFocus
+
   const defaultClassNames = getDefaultClassNames()
 
   return (

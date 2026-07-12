@@ -2,11 +2,20 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { MAINTENANCE_STATUS, MAINTENANCE_PRIORITY } from "@/lib/constants";
+import { MAINTENANCE_PRIORITY } from "@/lib/constants";
 import { Check, X } from "lucide-react";
 
+type ApprovalRequest = {
+  title: string;
+  asset_name: string;
+  priority: keyof typeof MAINTENANCE_PRIORITY;
+  raised_by: string;
+  created_at: string;
+  description?: string;
+};
+
 interface ApprovalCardProps {
-  request: any;
+  request: ApprovalRequest;
 }
 
 export function ApprovalCard({ request }: ApprovalCardProps) {
@@ -18,7 +27,7 @@ export function ApprovalCard({ request }: ApprovalCardProps) {
             <CardTitle className="text-lg">{request.title}</CardTitle>
             <CardDescription>{request.asset_name}</CardDescription>
           </div>
-          <StatusBadge config={MAINTENANCE_PRIORITY[request.priority as keyof typeof MAINTENANCE_PRIORITY]} />
+          <StatusBadge config={MAINTENANCE_PRIORITY[request.priority]} />
         </div>
       </CardHeader>
       <CardContent>

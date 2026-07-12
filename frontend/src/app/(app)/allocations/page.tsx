@@ -4,10 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { ASSET_STATUS, ASSET_CONDITION } from "@/lib/constants";
+import { ASSET_STATUS } from "@/lib/constants";
+
+type AllocationRow = {
+  id: string;
+  asset_tag: string;
+  asset_name: string;
+  holder: string;
+  expected_return: string;
+  status: keyof typeof ASSET_STATUS;
+};
 
 export default function AllocationsPage() {
-  const activeAllocations = [
+  const activeAllocations: AllocationRow[] = [
     { id: "1", asset_tag: "AF-0114", asset_name: "MacBook Pro M3", holder: "Priya Sharma", expected_return: "2026-08-01", status: "ALLOCATED" }
   ];
 
@@ -19,7 +28,7 @@ export default function AllocationsPage() {
     { 
       header: "Status", 
       accessorKey: "status",
-      cell: (row: any) => <StatusBadge config={ASSET_STATUS[row.status as keyof typeof ASSET_STATUS]} />
+      cell: (row: AllocationRow) => <StatusBadge config={ASSET_STATUS[row.status]} />
     },
     {
       header: "Actions",

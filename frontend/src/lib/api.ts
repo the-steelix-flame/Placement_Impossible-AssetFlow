@@ -1,15 +1,12 @@
-// ============================================================
-// API fetch wrapper & error handling
-// Dev B owns this file — placeholder stub until SYNC 1 merge.
-// ============================================================
-
+import { getApiBaseUrl } from "@/lib/env";
+import { supabase } from "@/lib/supabase";
 import type { ConflictError } from "./types";
 
 export class ApiError extends Error {
   constructor(
     public status: number,
-    public data: any,
-    message: string = "An API error occurred"
+    public data: unknown,
+    message: string = "An API error occurred",
   ) {
     super(message);
     this.name = "ApiError";
@@ -23,33 +20,69 @@ export class ConflictApiError extends ApiError {
   }
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+type JsonBody = Record<string, unknown> | unknown[] | null | undefined;
+type ApiRequestInit = Omit<RequestInit, "body"> & {
+  body?: BodyInit | JsonBody;
+};
 
-export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE}${endpoint}`;
-  
-  // In a real app, Dev B will attach the Supabase JWT here
-  const headers = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
+export async function fetchApi<T>(endpoint: string, options: ApiRequestInit = {}): Promise<T> {
+  const url = `${getApiBaseUrl()}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const headers = new Headers(options.headers);
+  const isFormData = options.body instanceof FormData;
+  const isBodyInit =
+    typeof options.body === "string" ||
+    options.body instanceof Blob ||
+    options.body instanceof ArrayBuffer ||
+    options.body instanceof URLSearchParams ||
+    options.body instanceof ReadableStream;
 
-  const response = await fetch(url, { ...options, headers });
+  if (!isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (session?.access_token) {
+    headers.set("Authorization", `Bearer ${session.access_token}`);
+  }
+
+  const body =
+    isFormData || isBodyInit || options.body == null
+      ? (options.body as BodyInit | null | undefined)
+      : JSON.stringify(options.body);
+
+  const response = await fetch(url, { ...options, body, headers });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    
+
     if (response.status === 409) {
       throw new ConflictApiError(errorData as ConflictError);
     }
-    
-    throw new ApiError(response.status, errorData, errorData.detail || response.statusText);
+
+    const message =
+      typeof errorData === "object" &&
+      errorData !== null &&
+      "detail" in errorData &&
+      typeof errorData.detail === "string"
+        ? errorData.detail
+        : response.statusText;
+
+    throw new ApiError(response.status, errorData, message);
   }
 
-  // Handle 204 No Content
   if (response.status === 204) {
     return {} as T;
   }
 
   return response.json();
 }
+
+export const api = {
+  get: <T>(endpoint: string) => fetchApi<T>(endpoint),
+  post: <T>(endpoint: string, body?: JsonBody) => fetchApi<T>(endpoint, { method: "POST", body }),
+  patch: <T>(endpoint: string, body?: JsonBody) => fetchApi<T>(endpoint, { method: "PATCH", body }),
+  delete: <T>(endpoint: string) => fetchApi<T>(endpoint, { method: "DELETE" }),
+};
