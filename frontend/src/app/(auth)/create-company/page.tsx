@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Clipboard, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ROLE_LABELS } from "@/lib/constants";
+import { PasswordInput } from "@/components/shared/PasswordInput";
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import type { WorkspaceOnboardingResponse } from "@/lib/types";
@@ -23,7 +23,6 @@ export default function CreateCompanyPage() {
   const [adminFullName, setAdminFullName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [result, setResult] = useState<WorkspaceOnboardingResponse | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,7 +32,6 @@ export default function CreateCompanyPage() {
     setLoading(true);
     setError("");
     setMessage("");
-    setResult(null);
 
     try {
       const workspace = await api.post<WorkspaceOnboardingResponse>("/onboarding/workspaces", {
@@ -65,8 +63,7 @@ export default function CreateCompanyPage() {
         return;
       }
 
-      setResult(workspace);
-      setMessage("Check your email to confirm the Admin account.");
+      setMessage("Check your email to confirm the Admin account. Role codes are available after sign-in in Organization.");
     } catch (submitError) {
       setError(errorMessage(submitError));
     } finally {
@@ -112,9 +109,8 @@ export default function CreateCompanyPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               minLength={8}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -135,28 +131,6 @@ export default function CreateCompanyPage() {
             {loading ? "Creating company" : "Create company"}
           </Button>
         </form>
-
-        {result ? (
-          <div className="mt-5 rounded-lg border bg-muted/30 p-4">
-            <div className="flex items-start gap-3">
-              <Clipboard className="mt-0.5 size-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium">Initial role codes</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  These can be rotated later from Organization.
-                </p>
-              </div>
-            </div>
-            <div className="mt-3 space-y-2">
-              {result.role_codes.map((roleCode) => (
-                <div key={roleCode.role} className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
-                  <span className="text-sm text-muted-foreground">{ROLE_LABELS[roleCode.role]}</span>
-                  <code className="break-all text-sm font-semibold">{roleCode.code}</code>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         <p className="mt-5 text-center text-sm text-muted-foreground">
           Need to join a company?{" "}

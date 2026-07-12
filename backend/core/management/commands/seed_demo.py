@@ -150,11 +150,19 @@ class Command(BaseCommand):
         codes = org_services._mint_role_codes(org, admin)
         role_codes = {c["role"]: c["code"] for c in codes}
         # A pending join request so the Admin approval queue isn't empty in the demo.
-        org_services.validate_join_code(
+        pending = org_services.validate_join_code(
             full_name="Ishaan Pending", email="pending@demo.assetflow",
             requested_role="EMPLOYEE", role_code=role_codes["EMPLOYEE"],
         )
         self.stdout.write(self.style.SUCCESS("Role join codes (demo — copy for Join Company):"))
+        from apps.organization.models import SignupRequest
+
+        sr = SignupRequest.objects.select_related("employee").get(id=pending["signup_request_id"])
+        sr.status = "PENDING_APPROVAL"
+        sr.save(update_fields=["status", "updated_at"])
+        if sr.employee:
+            sr.employee.auth_uid = _auth_uid(sr.employee.email)
+            sr.employee.save(update_fields=["auth_uid", "updated_at"])
         for role, code in role_codes.items():
             self.stdout.write(f"  {role:<14} {code}")
         self.stdout.write("Pending join request: pending@demo.assetflow (EMPLOYEE) — approve in the queue")

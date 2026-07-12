@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/shared/PasswordInput";
 import { supabase } from "@/lib/supabase";
 
 export default function UpdatePasswordPage() {
@@ -41,9 +41,8 @@ export default function UpdatePasswordPage() {
         <form className="space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <Label htmlFor="password">New password</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               minLength={8}
               value={password}
               onChange={(event) => setPassword(event.target.value)}

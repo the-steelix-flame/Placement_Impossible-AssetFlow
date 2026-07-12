@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PasswordInput } from "@/components/shared/PasswordInput";
 import { ROLE_LABELS } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -98,9 +99,8 @@ export default function JoinCompanyPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               minLength={8}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
