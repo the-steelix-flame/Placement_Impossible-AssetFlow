@@ -14,9 +14,9 @@ We are not building "another CRUD admin panel". Three ideas run through the whol
 
 Smaller differentiators (cheap to build, big demo value):
 
-- **Smart slot suggestion**: when a booking is rejected for overlap, the API returns the next free slot of the same duration and the UI offers it in one click.
-- **Asset health score**: derived from condition + maintenance frequency + age; used in Reports to rank "assets nearing retirement".
-- **Command palette (Ctrl+K)**: jump to any asset/employee/screen instantly — makes the demo feel fast and polished.
+- **Smart slot suggestion**: when a booking is rejected for overlap, the API returns the next free slot of the same duration and the UI offers it in one click. (Must-have — it rides on the overlap check.)
+- **Asset health score**: derived from condition + maintenance frequency + age; used in Reports to rank "assets nearing retirement". (Stretch.)
+- **Command palette (Ctrl+K)**: jump to any asset/employee/screen instantly — makes the demo feel fast and polished. (Stretch.)
 
 ---
 
@@ -92,38 +92,62 @@ The split is **by directory ownership**, not by feature. Two people never edit t
 
 **Why this causes almost no conflicts:** Dev A never touches `/frontend`. Dev B and Dev C share only `frontend/src/lib` and `components/shared`, both owned by Dev B with a "message, don't edit" rule. Route folders are disjoint. `package.json` dependency additions are announced in the group chat before committing (the single realistic conflict source).
 
+### Naming conventions — zero collisions between backend and frontend
+
+| Layer | Convention | Example |
+|---|---|---|
+| Django app labels | snake_case, plural domain words, always under `apps/` | `apps/allocation`, `apps/audits` |
+| Django models | PascalCase singular | `Asset`, `TransferRequest`, `AuditCycle` |
+| Ninja schemas | model name + `In`/`Out`/`Filter` suffix — **never** the bare model name (avoids import clashes with models) | `AssetIn`, `AssetOut`, `BookingFilter` |
+| API routes | kebab-case, plural, under `/api/v1/` | `/api/v1/transfer-requests` |
+| DB tables | snake_case plural (matches schema doc) | `maintenance_requests` |
+| Next.js route folders | kebab-case, mirrors API resource names | `app/(dashboard)/transfer-requests/` |
+| React components | PascalCase; **shared** ones only in `components/shared/`, screen-local ones stay inside that screen's folder (`_components/`) — Dev C never adds files to `shared/` | `components/shared/StatusBadge.tsx`, `app/bookings/_components/SlotPicker.tsx` |
+| Frontend types | defined once in `lib/types.ts` from the api-contract; screens import, never redefine | `Asset`, `Booking` |
+| Hooks | `use<Domain><Action>` , screen-local unless promoted by Dev B | `useAssetSearch`, `useBookingCalendar` |
+| Env vars | frontend `NEXT_PUBLIC_*` only; backend plain names; all listed in the root `.env.example` — new vars are announced in chat before commit | `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_JWT_SECRET` |
+
+Rule of thumb: if two people would create a file at the same path, the design is wrong — move it into the owner's folder and import it.
+
 ---
 
 ## 4. Git Workflow & Commit Discipline
 
 - Branches: `main` (protected by convention — only this plan and sync merges), `dev-a/backend`, `dev-b/frontend-core`, `dev-c/frontend-flows`. All work happens on the three dev branches.
-- **Commit every ~60 minutes** on your own branch — small, working slices (see hourly checkpoints below). Push immediately after committing so teammates can see progress.
-- Merge to `main` only at the four **sync points** (end of each phase). Merge order at every sync: **A → B → C** (backend first so the frontend merges compile against real contracts). Rebase your branch on `main` right after each sync.
+- **Commit every ~60 minutes** on your own branch — small, working slices (see hourly checkpoints below).
+- **Pull at regular intervals — the hourly ritual for everyone:**
+  1. `git add … && git commit` (on your own branch)
+  2. `git pull --rebase origin main` — pick up anything merged since your last pull
+  3. `git push origin <your-branch>`
+  Never let more than an hour pass without a pull; a stale branch is how conflicts are born. Immediately after every sync point, everyone rebases on `main` before writing the next line of code.
+- Merge to `main` only at the three **sync points** below. Merge order at every sync: **A → B → C** (backend first so the frontend merges compile against real contracts).
 - Commit messages: conventional style, plain and human — `feat: booking overlap validation with next-slot suggestion`, `fix: return flow resets asset to available`. Write them yourself in your own words; keep them short and specific to what changed.
 - Never commit secrets. `.env`, `.env.local` are gitignored from commit #1; a `.env.example` documents required keys.
 
-### Hourly commit checkpoints (24h plan — compress proportionally if the hackathon is shorter)
+### Hourly commit checkpoints (8-hour hackathon)
+
+Deployment happens at **H7, not the final hour** — never demo from localhost with 20 minutes left.
 
 | Hour | Dev A (backend) | Dev B (frontend core) | Dev C (frontend flows) |
 |---|---|---|---|
-| H1 | uv + Django + Ninja scaffold boots | Next.js + Tailwind + shadcn scaffold | Route stubs for all 6 workflow screens |
-| H2 | Supabase DB connected, accounts app + JWT auth | Supabase auth client, login/signup pages | Booking calendar layout (static data) |
-| H3 | organization + employees models & migrations | App shell: sidebar, topbar, protected routes | Allocation screen layout (static) |
-| H4 | Org/category/employee CRUD APIs + role guards | Org Setup Tab A (departments) | Maintenance screens layout (static) |
-| **H5 — SYNC 1**: auth works end-to-end; org CRUD live; merge A→B→C into `main` |
-| H6 | assets app: models, tag generator, schema.sql trigger migration | Org Setup Tabs B + C (categories, directory + promote) | Audit wizard layout (static) |
-| H7 | Asset CRUD + search/filter APIs | Asset registration form + photo upload | Wire allocation screen to live API |
-| H8 | Allocation + transfer APIs (conflict rule) | Asset directory table + filters | Conflict modal + transfer request flow |
-| H9 | Booking APIs (exclusion constraint + next-slot) | Asset Passport detail page (timeline) | Wire booking calendar + overlap UX |
-| **H10 — SYNC 2**: register→allocate→book demo path works; merge |
-| H11–12 | Maintenance workflow APIs + status automation | Dashboard KPI cards (live) | Maintenance flow wired end-to-end |
-| H13–14 | Audit cycle APIs + discrepancy generation | Overdue-returns dashboard section + quick actions | Audit checklist + close-cycle wired |
-| H15–16 | Notifications + activity log APIs; overdue flag job | Command palette; polish core screens | Transfer approval queue; return flow |
-| **H17 — SYNC 3**: every module functional; merge |
-| H18–19 | Dashboard/report aggregation endpoints; seed script | Responsive pass; empty/loading/error states | Reports charts + heatmap + CSV export |
-| H20–21 | Deploy to HF Spaces (Docker), CORS for Vercel | Deploy to Vercel, env wiring | Notifications bell + activity log page |
-| H22–23 | Bug bash from demo run-through | Bug bash + UX polish | Bug bash + demo data staging |
-| **H24 — SYNC 4 / FINAL**: merge, tag `v1.0`, rehearse demo script |
+| H1 | uv + Django + Ninja scaffold boots; Supabase DB connected; JWT auth bridge + role guards | Next.js + Tailwind + shadcn scaffold; Supabase auth client; login/signup pages | Route stubs for all workflow screens; booking calendar layout (static data) |
+| H2 | organization apps: departments, categories, employees — models, migrations, CRUD APIs | App shell (sidebar/topbar/protected routes); `lib/` API client + types; forgot-password | Allocation + maintenance screen layouts (static data) |
+| **SYNC 1 (end of H2)**: auth works end-to-end, org CRUD live — merge A→B→C into `main`, everyone rebases |
+| H3 | assets app: models, tag trigger, schema.sql constraints migration, CRUD + search/filter APIs | Organization Setup — all 3 tabs (departments, categories, directory + promote) | Wire allocation to live API: conflict modal ("held by Priya"), transfer request flow |
+| H4 | Allocation + transfer + return APIs (409 conflict rule); booking APIs (exclusion constraint + next-slot) | Asset registration form + photo upload; asset directory table + filters | Wire booking calendar: create/cancel, overlap-rejection UX + smart slot suggestion |
+| H5 | Maintenance workflow APIs + asset status automation; audit cycle APIs + discrepancy generation | Asset Passport detail page (unified timeline); dashboard KPI cards (live) | Maintenance flow end-to-end: raise → approve/reject → assign → resolve |
+| **SYNC 2 (end of H5)**: register → allocate → book → maintain demo path works — merge, rebase |
+| H6 | Notifications + activity log APIs; dashboard KPI + overdue endpoints; seed script (`seed_demo`) | Dashboard overdue-returns section + quick actions; loading/empty/error states | Audit wizard + auditor checklist + close-cycle; transfer approval queue + return flow |
+| H7 | **Deploy to HF Spaces** (Docker) + CORS for Vercel domain; smoke-test deployed API | **Deploy to Vercel** + env wiring; responsive pass on core screens | Notifications bell + activity log page; reports: dept allocation summary + booking heatmap |
+| **SYNC 3 (end of H7)**: everything merged and running on the deployed stack |
+| H8 | Bug bash on deployed app; fix critical issues only | Bug bash + UX polish; stage demo data via seed | Bug bash; rehearse demo script (conflict block, overlap rejection, audit close) |
+| **FINAL (end of H8)**: last merge, tag `v1.0`, demo run-through on production URLs |
+
+### Scope guard for 8 hours
+
+- **Must-have** (the demo): auth + roles, org setup, asset registry + passport, allocation conflict + transfer, booking overlap + calendar, maintenance workflow, audit cycle + close, dashboard KPIs, notifications list.
+- **Stretch — only if ahead of schedule** (each is isolated, skipping one breaks nothing): command palette, asset health score, CSV export, extra report charts (heatmap ships, the rest are bonus), booking reschedule (cancel + rebook covers the demo), QR display on asset page.
+- If a module is running late at a sync point, **cut its stretch polish, not the next module's must-have**.
 
 ---
 
@@ -143,12 +167,12 @@ The split is **by directory ownership**, not by feature. Two people never edit t
 
 | # | Task | Needed by | When |
 |---|---|---|---|
-| 1 | Create Supabase project; hand over `SUPABASE_URL`, `anon key`, `service_role key`, `JWT secret`, DB connection string (pooler, port 6543) | Dev A + Dev B | H1 |
-| 2 | Enable Supabase email auth + configure password-reset redirect URL | Dev B | H2 |
-| 3 | Create Supabase Storage buckets `asset-photos`, `maintenance-photos`, `documents` | Dev A | H6 |
-| 4 | Create Hugging Face account + Docker Space; add env secrets in Space settings | Dev A | H20 |
-| 5 | Create Vercel project linked to this repo (`/frontend` root); set env vars | Dev B | H20 |
-| 6 | Collect image assets: logo, favicon, empty-state illustrations, ~10 sample asset photos for seed data | Dev B | H6 |
+| 1 | Create Supabase project; hand over `SUPABASE_URL`, `anon key`, `service_role key`, `JWT secret`, DB connection string (pooler, port 6543) | Dev A + Dev B | H1 (first 15 min) |
+| 2 | Enable Supabase email auth + configure password-reset redirect URL | Dev B | H1 |
+| 3 | Create Supabase Storage buckets `asset-photos`, `maintenance-photos`, `documents` | Dev A | H3 |
+| 4 | Create Hugging Face account + Docker Space; add env secrets in Space settings | Dev A | H7 |
+| 5 | Create Vercel project linked to this repo (`/frontend` root); set env vars | Dev B | H7 |
+| 6 | Collect image assets: logo, favicon, empty-state illustrations, ~10 sample asset photos for seed data | Dev B | H2–H3 |
 | 7 | Any paid/OTP/CAPTCHA account step, custom domain decisions | whoever hits it | as needed |
 
 Rule: an AI-assisted coding session must **pause and ask the user** for any of the above (API keys, account creation, asset collection) rather than fabricating values.
