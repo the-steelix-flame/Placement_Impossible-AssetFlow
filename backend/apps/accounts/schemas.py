@@ -15,12 +15,17 @@ class EmployeeOut(Schema):
     status: str
     department_id: UUID | None = None
     department_name: str | None = None
+    organization_name: str | None = None
     auth_uid: UUID | None = None
     created_at: datetime
 
     @staticmethod
     def resolve_department_name(obj):
         return obj.department.name if obj.department_id else None
+
+    @staticmethod
+    def resolve_organization_name(obj):
+        return obj.org.name if obj.org_id else None
 
 
 class JoinRequestOut(Schema):
