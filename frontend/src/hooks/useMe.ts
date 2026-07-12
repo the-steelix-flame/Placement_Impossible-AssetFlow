@@ -3,39 +3,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
-import type { Employee } from "@/lib/types";
-
-type MeOut = Employee & { org_id: string };
+import type { Me } from "@/lib/types";
 
 export function useMe() {
   return useQuery({
     queryKey: ["me"],
-    queryFn: async (): Promise<MeOut | null> => {
-      try {
-        return await api.get<MeOut>("/me");
-      } catch {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+    queryFn: async (): Promise<Me | null> => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-        if (!user?.email) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          org_id: "local",
-          auth_uid: user.id,
-          full_name:
-            typeof user.user_metadata?.full_name === "string" && user.user_metadata.full_name
-              ? user.user_metadata.full_name
-              : user.email.split("@")[0],
-          email: user.email,
-          department_id: null,
-          role: "EMPLOYEE",
-          status: "ACTIVE",
-        };
+      if (!session) {
+        return null;
       }
+
+      return api.get<Me>("/me");
     },
+    retry: false,
   });
 }

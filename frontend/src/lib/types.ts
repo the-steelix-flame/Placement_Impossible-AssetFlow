@@ -8,6 +8,17 @@
 
 export type UserRole = "ADMIN" | "ASSET_MANAGER" | "DEPT_HEAD" | "EMPLOYEE";
 
+export type JoinCodeRole = Exclude<UserRole, "ADMIN">;
+
+export type EmployeeAccessStatus = "PENDING_APPROVAL" | "ACTIVE" | "REJECTED" | "SUSPENDED";
+
+export type SignupRequestStatus =
+  | "PENDING_EMAIL_VERIFICATION"
+  | "PENDING_APPROVAL"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXPIRED";
+
 export type RecordStatus = "ACTIVE" | "INACTIVE";
 
 export type AssetFieldType = "text" | "number" | "date" | "boolean" | "select" | string;
@@ -80,11 +91,73 @@ export interface Employee {
   email: string;
   auth_uid?: string | null;
   org_id?: string;
+  organization_name?: string | null;
   department_name?: string | null;
   department_id: string | null;
   role: UserRole;
+  requested_role?: UserRole | null;
+  access_status?: EmployeeAccessStatus;
   status: RecordStatus;
   created_at?: string;
+}
+
+export type Me = Employee & {
+  org_id: string;
+  access_status: EmployeeAccessStatus;
+};
+
+export interface RoleCode {
+  role: JoinCodeRole;
+  code: string;
+}
+
+export interface WorkspaceOnboardingResponse {
+  organization_id: string;
+  organization_name: string;
+  admin_employee_id: string;
+  signup_ticket: string;
+  role_codes: RoleCode[];
+}
+
+export interface JoinValidationResponse {
+  organization_id: string;
+  organization_name: string;
+  requested_role: JoinCodeRole;
+  signup_request_id: string;
+  signup_ticket: string;
+  requires_admin_approval: boolean;
+}
+
+export interface JoinCode {
+  id: string;
+  role: JoinCodeRole;
+  masked_code: string;
+  last_rotated_at: string | null;
+  expires_at: string | null;
+  status: RecordStatus;
+  created_at: string;
+}
+
+export interface RotateJoinCodeResponse {
+  id: string;
+  role: JoinCodeRole;
+  code: string;
+  expires_at: string | null;
+  status: RecordStatus;
+}
+
+export interface JoinRequest {
+  id: string;
+  organization_id: string;
+  full_name: string;
+  email: string;
+  requested_role: JoinCodeRole;
+  status: SignupRequestStatus;
+  employee_id: string | null;
+  created_at: string;
+  decided_by_id: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
 }
 
 export interface Department {
