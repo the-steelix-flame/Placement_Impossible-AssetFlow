@@ -17,6 +17,31 @@ class UserRole(models.TextChoices):
     EMPLOYEE = "EMPLOYEE"
 
 
+class JoinCodeRole(models.TextChoices):
+    """Roles a join code can grant (ADMIN is intentionally excluded)."""
+
+    ASSET_MANAGER = "ASSET_MANAGER"
+    DEPT_HEAD = "DEPT_HEAD"
+    EMPLOYEE = "EMPLOYEE"
+
+
+class EmployeeAccessStatus(models.TextChoices):
+    """Gates access to company data. Pending users can authenticate but see nothing."""
+
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    ACTIVE = "ACTIVE"
+    REJECTED = "REJECTED"
+    SUSPENDED = "SUSPENDED"
+
+
+class SignupRequestStatus(models.TextChoices):
+    PENDING_EMAIL_VERIFICATION = "PENDING_EMAIL_VERIFICATION"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+
+
 class RecordStatus(models.TextChoices):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"

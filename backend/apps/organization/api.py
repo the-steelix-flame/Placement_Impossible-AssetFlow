@@ -12,11 +12,53 @@ from apps.organization.schemas import (
     DepartmentIn,
     DepartmentOut,
     DepartmentUpdate,
+    JoinCodeOut,
+    RotateJoinCodeOut,
+    ValidateCodeIn,
+    ValidateCodeOut,
+    WorkspaceIn,
+    WorkspaceOut,
 )
 from core.auth import supabase_auth
 from core.permissions import ADMIN, ASSET_MANAGER, require_role
 
 router = Router(auth=supabase_auth, tags=["organization"])
+
+# Public onboarding — NO auth, because role-code validation must happen before
+# the frontend asks Supabase to send a verification email.
+onboarding_router = Router(tags=["onboarding"])
+
+
+@onboarding_router.post("/onboarding/workspaces", response={201: WorkspaceOut})
+def create_workspace(request, payload: WorkspaceIn):
+    return 201, services.create_workspace(
+        company_name=payload.company_name,
+        admin_full_name=payload.admin_full_name,
+        admin_email=payload.admin_email,
+    )
+
+
+@onboarding_router.post("/onboarding/join/validate-code", response=ValidateCodeOut)
+def validate_join_code(request, payload: ValidateCodeIn):
+    return services.validate_join_code(
+        full_name=payload.full_name,
+        email=payload.email,
+        requested_role=payload.requested_role,
+        role_code=payload.role_code,
+    )
+
+
+# ── Join codes (Admin) ─────────────────────────────────────────────────
+@router.get("/join-codes", response=list[JoinCodeOut])
+@require_role(ADMIN)
+def list_join_codes(request):
+    return services.list_join_codes(request.employee.org)
+
+
+@router.post("/join-codes/{role}/rotate", response=RotateJoinCodeOut)
+@require_role(ADMIN)
+def rotate_join_code(request, role: str):
+    return services.rotate_join_code(org=request.employee.org, role=role, actor=request.employee)
 
 
 # ── Departments ────────────────────────────────────────────────────────

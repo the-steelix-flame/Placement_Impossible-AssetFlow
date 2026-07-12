@@ -2,7 +2,7 @@ import uuid
 
 from django.db import models
 
-from core.enums import RecordStatus, UserRole
+from core.enums import EmployeeAccessStatus, RecordStatus, UserRole
 
 
 class Employee(models.Model):
@@ -26,6 +26,16 @@ class Employee(models.Model):
         related_name="members",
     )
     role = models.CharField(max_length=16, choices=UserRole.choices, default=UserRole.EMPLOYEE)
+    # Role requested via a join code (before Admin approval grants `role`).
+    requested_role = models.CharField(
+        max_length=16, choices=UserRole.choices, null=True, blank=True
+    )
+    # Gates access to company data. Pending users authenticate but see nothing.
+    access_status = models.CharField(
+        max_length=20,
+        choices=EmployeeAccessStatus.choices,
+        default=EmployeeAccessStatus.PENDING_APPROVAL,
+    )
     status = models.CharField(
         max_length=16, choices=RecordStatus.choices, default=RecordStatus.ACTIVE
     )
