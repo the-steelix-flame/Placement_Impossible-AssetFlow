@@ -79,9 +79,15 @@ def _link_via_ticket(payload: dict, auth_uid: str):
         return None
 
     emp = sr.employee
-    if emp.auth_uid is None:
-        emp.auth_uid = auth_uid
-        emp.save(update_fields=["auth_uid", "updated_at"])
+    # Ticket is single-claim. If this employee is already linked to an account, the
+    # caller is a DIFFERENT user (the auth_uid match earlier in _resolve_employee would
+    # have returned it otherwise) presenting a reused/leaked ticket — reject, don't
+    # hand them someone else's (possibly Admin) identity.
+    if emp.auth_uid is not None:
+        return None
+
+    emp.auth_uid = auth_uid
+    emp.save(update_fields=["auth_uid", "updated_at"])
     if sr.status == "PENDING_EMAIL_VERIFICATION":
         sr.status = "APPROVED" if emp.access_status == "ACTIVE" else "PENDING_APPROVAL"
         sr.save(update_fields=["status", "updated_at"])

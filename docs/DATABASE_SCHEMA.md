@@ -513,6 +513,7 @@ CREATE TRIGGER trg_touch_maintenance  BEFORE UPDATE ON maintenance_requests FOR 
 | Self-assigned admin at generic signup | The normal Join Company flow does not allow `ADMIN`; only Create Company can bootstrap one Admin for a brand-new organization. Existing organizations require Admin approval for every join-code user. |
 | Shared role code gives access to strangers | Role code only creates a `signup_requests` row and an employee with `access_status=PENDING_APPROVAL`; business endpoints reject pending users until Admin approval. |
 | Role code leakage | Codes are high-entropy, scoped to one org + role, stored as hashes, and Admin can rotate/revoke each role's code. |
+| Signup ticket reuse / account takeover | Ticket is single-claim: the auth bridge links `auth_uid` only to an *unclaimed* employee. Once an employee has an `auth_uid`, presenting the same ticket from a different account is rejected — a leaked ticket can't impersonate the first user / Admin. |
 | Role spoofing via forged/edited JWT claims | Roles are read from the `employees` table by `auth_uid`, never from token claims |
 | Double allocation (race condition included) | `uniq_open_allocation` partial unique index — concurrent inserts serialize at the DB |
 | Overlapping bookings (race condition included) | `booking_no_overlap` exclusion constraint with half-open ranges |
