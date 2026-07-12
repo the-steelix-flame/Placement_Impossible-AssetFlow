@@ -131,6 +131,7 @@ export interface JoinValidationResponse {
 export interface JoinCode {
   id: string;
   role: JoinCodeRole;
+  code: string | null;
   masked_code: string;
   last_rotated_at: string | null;
   expires_at: string | null;

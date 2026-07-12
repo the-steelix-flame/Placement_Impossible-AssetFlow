@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, RotateCw, ShieldCheck, X } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, RotateCw, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/shared/DataTable";
@@ -52,13 +52,15 @@ function formatDate(value: string | null | undefined) {
 function JoinCodesPanel() {
   const queryClient = useQueryClient();
   const joinCodes = useApiQuery<JoinCode[]>(["join-codes"], "/join-codes");
-  const [visibleCodes, setVisibleCodes] = useState<Partial<Record<JoinCodeRole, string>>>({});
+  const [rotatedCodes, setRotatedCodes] = useState<Partial<Record<JoinCodeRole, string>>>({});
+  const [revealed, setRevealed] = useState<Partial<Record<JoinCodeRole, boolean>>>({});
   const [copiedRole, setCopiedRole] = useState<JoinCodeRole | null>(null);
 
   const rotateMutation = useMutation<RotateJoinCodeResponse, Error, JoinCodeRole>({
     mutationFn: (role) => api.post<RotateJoinCodeResponse>(`/join-codes/${role}/rotate`),
     onSuccess: (data) => {
-      setVisibleCodes((previous) => ({ ...previous, [data.role]: data.code }));
+      setRotatedCodes((previous) => ({ ...previous, [data.role]: data.code }));
+      setRevealed((previous) => ({ ...previous, [data.role]: true }));
       queryClient.invalidateQueries({ queryKey: ["join-codes"] });
     },
   });
@@ -76,7 +78,7 @@ function JoinCodesPanel() {
       <CardHeader>
         <CardTitle>Role join codes</CardTitle>
         <CardDescription>
-          Rotate codes when they are shared outside the company. Existing approved users keep their roles.
+          Show, copy, and share a code so people can request that role. Rotate to revoke the old one.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -85,8 +87,10 @@ function JoinCodesPanel() {
           <div className="space-y-3">
             {joinableRoles.map((role) => {
               const joinCode = codesByRole.get(role);
-              const visibleCode = visibleCodes[role];
-              const copyableCode = visibleCode ?? "";
+              // Prefer a freshly-rotated code; otherwise the plaintext the API returns.
+              const actualCode = rotatedCodes[role] ?? joinCode?.code ?? "";
+              const isRevealed = Boolean(revealed[role]);
+              const display = actualCode && isRevealed ? actualCode : (joinCode?.masked_code ?? "No code generated");
               const isRotating = rotateMutation.isPending && rotateMutation.variables === role;
 
               return (
@@ -98,7 +102,7 @@ function JoinCodesPanel() {
                         <p className="font-medium">{ROLE_LABELS[role]}</p>
                       </div>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Expires {formatDate(joinCode?.expires_at)}. Last rotated {formatDate(joinCode?.last_rotated_at)}.
+                        Last rotated {formatDate(joinCode?.last_rotated_at)}.
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -109,24 +113,30 @@ function JoinCodesPanel() {
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-                    <code className="break-all text-sm font-semibold">
-                      {visibleCode ?? joinCode?.masked_code ?? "No code generated"}
-                    </code>
+                    <code className="break-all text-sm font-semibold">{display}</code>
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       className="ml-auto shrink-0"
+                      aria-label={isRevealed ? `Hide ${ROLE_LABELS[role]} code` : `Show ${ROLE_LABELS[role]} code`}
+                      title={isRevealed ? "Hide code" : "Show code"}
+                      disabled={!actualCode}
+                      onClick={() => setRevealed((previous) => ({ ...previous, [role]: !previous[role] }))}
+                    >
+                      {isRevealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="shrink-0"
                       aria-label={`Copy ${ROLE_LABELS[role]} code`}
-                      title={copyableCode ? "Copy code" : "Rotate to reveal a copyable code"}
-                      disabled={!copyableCode}
-                      onClick={() => copyCode(role, copyableCode)}
+                      title={actualCode ? "Copy code" : "No code to copy"}
+                      disabled={!actualCode}
+                      onClick={() => copyCode(role, actualCode)}
                     >
                       {copiedRole === role ? <Check className="size-4" /> : <Copy className="size-4" />}
                     </Button>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Plaintext is shown only after rotation because stored codes are hashed.
-                  </p>
                 </div>
               );
             })}

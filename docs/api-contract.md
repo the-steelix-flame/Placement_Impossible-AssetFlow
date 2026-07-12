@@ -265,7 +265,7 @@ Pending users:
 
 `JoinCodeOut`:
 ```jsonc
-{ "id","role","masked_code","last_rotated_at","expires_at","status","created_at" }
+{ "id","role","code","masked_code","last_rotated_at","expires_at","status","created_at" }
 ```
 
 `RotateJoinCodeOut`:

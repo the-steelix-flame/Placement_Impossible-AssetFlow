@@ -49,7 +49,7 @@ export default function CreateCompanyPage() {
             signup_ticket: workspace.signup_ticket,
             onboarding_flow: "CREATE_COMPANY",
           },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
         },
       });
 
