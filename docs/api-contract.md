@@ -253,9 +253,10 @@ The Supabase metadata must include:
 `EmployeeOut`:
 ```jsonc
 { "id","full_name","email","role","requested_role","access_status","status",
-  "department_id","department_name","auth_uid","created_at" }
+  "department_id","department_name","organization_name","auth_uid","created_at" }
 ```
-`MeOut` = `EmployeeOut` + `org_id`.
+`MeOut` = `EmployeeOut` + `org_id`. (`/me` includes `organization_name` — the
+pending-approval screen shows it.)
 
 Pending users:
 - `/me` returns `access_status="PENDING_APPROVAL"` plus the organization name.
