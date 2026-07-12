@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, CalendarClock, PackageCheck, Plus, Wrench } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -102,13 +102,17 @@ export default function DashboardPage() {
                 const Icon = action.icon;
 
                 return (
-                  <Button key={action.label} variant="outline" className="w-full justify-between" render={<Link href={action.href} />}>
+                  <Link
+                    key={action.label}
+                    className={buttonVariants({ variant: "outline", className: "w-full justify-between" })}
+                    href={action.href}
+                  >
                     <span className="flex items-center gap-2">
                       <Icon className="size-4" />
                       {action.label}
                     </span>
                     <ArrowRight className="size-4" />
-                  </Button>
+                  </Link>
                 );
               })}
             </CardContent>

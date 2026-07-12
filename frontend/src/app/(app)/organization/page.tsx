@@ -75,7 +75,9 @@ function JoinCodesPanel() {
     <Card>
       <CardHeader>
         <CardTitle>Role join codes</CardTitle>
-        <CardDescription>Rotate codes when they are shared outside the company.</CardDescription>
+        <CardDescription>
+          Rotate codes when they are shared outside the company. Existing approved users keep their roles.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <LoadState loading={joinCodes.isLoading} error={joinCodes.isError} />
@@ -84,6 +86,7 @@ function JoinCodesPanel() {
             {joinableRoles.map((role) => {
               const joinCode = codesByRole.get(role);
               const visibleCode = visibleCodes[role];
+              const copyableCode = visibleCode ?? "";
               const isRotating = rotateMutation.isPending && rotateMutation.variables === role;
 
               return (
@@ -99,22 +102,31 @@ function JoinCodesPanel() {
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {visibleCode ? (
-                        <Button variant="outline" size="icon" aria-label={`Copy ${ROLE_LABELS[role]} code`} onClick={() => copyCode(role, visibleCode)}>
-                          {copiedRole === role ? <Check className="size-4" /> : <Copy className="size-4" />}
-                        </Button>
-                      ) : null}
                       <Button variant="outline" onClick={() => rotateMutation.mutate(role)} disabled={isRotating}>
                         <RotateCw className={cn("size-4", isRotating && "animate-spin")} />
                         Rotate
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2">
+                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
                     <code className="break-all text-sm font-semibold">
                       {visibleCode ?? joinCode?.masked_code ?? "No code generated"}
                     </code>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="ml-auto shrink-0"
+                      aria-label={`Copy ${ROLE_LABELS[role]} code`}
+                      title={copyableCode ? "Copy code" : "Rotate to reveal a copyable code"}
+                      disabled={!copyableCode}
+                      onClick={() => copyCode(role, copyableCode)}
+                    >
+                      {copiedRole === role ? <Check className="size-4" /> : <Copy className="size-4" />}
+                    </Button>
                   </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Plaintext is shown only after rotation because stored codes are hashed.
+                  </p>
                 </div>
               );
             })}
@@ -136,7 +148,10 @@ function JoinRequestsQueue() {
   );
 
   const decideMutation = useMutation<unknown, Error, { id: string; action: "approve" | "reject" }>({
-    mutationFn: ({ id, action }) => api.post(`/join-requests/${id}/${action}`),
+    mutationFn: ({ id, action }) =>
+      action === "reject"
+        ? api.post(`/join-requests/${id}/${action}`, { note: null })
+        : api.post(`/join-requests/${id}/${action}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["join-requests"] });
       queryClient.invalidateQueries({ queryKey: ["employees"] });

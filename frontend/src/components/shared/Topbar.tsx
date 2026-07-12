@@ -13,7 +13,13 @@ function titleFromPath(pathname: string) {
   return segment.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
+export function Topbar({
+  onOpenCommand,
+  onToggleSidebar,
+}: {
+  onOpenCommand: () => void;
+  onToggleSidebar: () => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: me } = useMe();
@@ -26,7 +32,7 @@ export function Topbar({ onOpenCommand }: { onOpenCommand: () => void }) {
   return (
     <header className="flex h-16 items-center justify-between border-b bg-card px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
-        <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation">
+        <Button variant="ghost" size="icon" aria-label="Toggle navigation" onClick={onToggleSidebar}>
           <Menu className="size-4" />
         </Button>
         <div className="min-w-0">

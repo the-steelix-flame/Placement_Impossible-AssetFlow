@@ -2,7 +2,15 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseBrowserConfig } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/update-password"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/create-company",
+  "/join-company",
+  "/pending-approval",
+  "/forgot-password",
+  "/update-password",
+];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
