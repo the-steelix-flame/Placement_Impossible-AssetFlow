@@ -1,18 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, RotateCw, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/shared/DataTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { ASSET_STATUS, ROLE_LABELS } from "@/lib/constants";
-import type { AssetCategory, Department, Employee } from "@/lib/types";
+import { ACCESS_STATUS, ASSET_STATUS, ROLE_LABELS, SIGNUP_REQUEST_STATUS } from "@/lib/constants";
+import { api } from "@/lib/api";
+import type {
+  AssetCategory,
+  Department,
+  Employee,
+  JoinCode,
+  JoinCodeRole,
+  JoinRequest,
+  RotateJoinCodeResponse,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useApiQuery } from "@/hooks/useApiQuery";
 
-const tabs = ["Departments", "Categories", "Directory"] as const;
+const tabs = ["Departments", "Categories", "Directory", "Access"] as const;
+const joinableRoles: JoinCodeRole[] = ["EMPLOYEE", "DEPT_HEAD", "ASSET_MANAGER"];
 
 function LoadState({ loading, error }: { loading: boolean; error: boolean }) {
   if (loading) {
@@ -26,6 +37,175 @@ function LoadState({ loading, error }: { loading: boolean; error: boolean }) {
   return null;
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function JoinCodesPanel() {
+  const queryClient = useQueryClient();
+  const joinCodes = useApiQuery<JoinCode[]>(["join-codes"], "/join-codes");
+  const [visibleCodes, setVisibleCodes] = useState<Partial<Record<JoinCodeRole, string>>>({});
+  const [copiedRole, setCopiedRole] = useState<JoinCodeRole | null>(null);
+
+  const rotateMutation = useMutation<RotateJoinCodeResponse, Error, JoinCodeRole>({
+    mutationFn: (role) => api.post<RotateJoinCodeResponse>(`/join-codes/${role}/rotate`),
+    onSuccess: (data) => {
+      setVisibleCodes((previous) => ({ ...previous, [data.role]: data.code }));
+      queryClient.invalidateQueries({ queryKey: ["join-codes"] });
+    },
+  });
+
+  async function copyCode(role: JoinCodeRole, code: string) {
+    await navigator.clipboard.writeText(code);
+    setCopiedRole(role);
+    window.setTimeout(() => setCopiedRole(null), 1500);
+  }
+
+  const codesByRole = new Map((joinCodes.data ?? []).map((code) => [code.role, code]));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Role join codes</CardTitle>
+        <CardDescription>Rotate codes when they are shared outside the company.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <LoadState loading={joinCodes.isLoading} error={joinCodes.isError} />
+        {!joinCodes.isLoading && !joinCodes.isError ? (
+          <div className="space-y-3">
+            {joinableRoles.map((role) => {
+              const joinCode = codesByRole.get(role);
+              const visibleCode = visibleCodes[role];
+              const isRotating = rotateMutation.isPending && rotateMutation.variables === role;
+
+              return (
+                <div key={role} className="rounded-lg border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="size-4 text-primary" />
+                        <p className="font-medium">{ROLE_LABELS[role]}</p>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Expires {formatDate(joinCode?.expires_at)}. Last rotated {formatDate(joinCode?.last_rotated_at)}.
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {visibleCode ? (
+                        <Button variant="outline" size="icon" aria-label={`Copy ${ROLE_LABELS[role]} code`} onClick={() => copyCode(role, visibleCode)}>
+                          {copiedRole === role ? <Check className="size-4" /> : <Copy className="size-4" />}
+                        </Button>
+                      ) : null}
+                      <Button variant="outline" onClick={() => rotateMutation.mutate(role)} disabled={isRotating}>
+                        <RotateCw className={cn("size-4", isRotating && "animate-spin")} />
+                        Rotate
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2">
+                    <code className="break-all text-sm font-semibold">
+                      {visibleCode ?? joinCode?.masked_code ?? "No code generated"}
+                    </code>
+                  </div>
+                </div>
+              );
+            })}
+            {rotateMutation.isError ? (
+              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{rotateMutation.error.message}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function JoinRequestsQueue() {
+  const queryClient = useQueryClient();
+  const requests = useApiQuery<JoinRequest[]>(
+    ["join-requests", "pending"],
+    "/join-requests?status=PENDING_APPROVAL",
+  );
+
+  const decideMutation = useMutation<unknown, Error, { id: string; action: "approve" | "reject" }>({
+    mutationFn: ({ id, action }) => api.post(`/join-requests/${id}/${action}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["join-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Join requests</CardTitle>
+        <CardDescription>Approve only the people who should receive company data access.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <LoadState loading={requests.isLoading} error={requests.isError} />
+        {!requests.isLoading && !requests.isError ? (
+          <div className="space-y-3">
+            {(requests.data ?? []).length === 0 ? (
+              <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">No pending requests.</div>
+            ) : (
+              (requests.data ?? []).map((request) => {
+                const approving = decideMutation.isPending && decideMutation.variables?.id === request.id && decideMutation.variables.action === "approve";
+                const rejecting = decideMutation.isPending && decideMutation.variables?.id === request.id && decideMutation.variables.action === "reject";
+
+                return (
+                  <div key={request.id} className="rounded-lg border p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{request.full_name}</p>
+                          <StatusBadge config={SIGNUP_REQUEST_STATUS[request.status]} />
+                        </div>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">{request.email}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {ROLE_LABELS[request.requested_role]} requested on {formatDate(request.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => decideMutation.mutate({ id: request.id, action: "approve" })}
+                          disabled={decideMutation.isPending}
+                        >
+                          {approving ? <RotateCw className="size-4 animate-spin" /> : <Check className="size-4" />}
+                          Approve
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => decideMutation.mutate({ id: request.id, action: "reject" })}
+                          disabled={decideMutation.isPending}
+                        >
+                          {rejecting ? <RotateCw className="size-4 animate-spin" /> : <X className="size-4" />}
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            {decideMutation.isError ? (
+              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{decideMutation.error.message}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function OrganizationPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Departments");
   const departments = useApiQuery<Department[]>(["departments"], "/departments");
@@ -34,14 +214,9 @@ export default function OrganizationPage() {
 
   return (
     <div>
-      <PageHeader title="Organization" description="Departments, categories, and employee role management.">
-        <Button>
-          <Plus className="size-4" />
-          New item
-        </Button>
-      </PageHeader>
+      <PageHeader title="Organization" description="Departments, asset categories, directory, and workspace access." />
       <div className="space-y-5 p-6">
-        <div className="inline-flex rounded-lg border bg-card p-1">
+        <div className="inline-flex flex-wrap rounded-lg border bg-card p-1">
           {tabs.map((tab) => (
             <button
               key={tab}
@@ -72,7 +247,11 @@ export default function OrganizationPage() {
                     { header: "Department", accessorKey: "name" },
                     { header: "Code", accessorKey: "code" },
                     { header: "Parent", accessorKey: "parent_id", cell: (row) => row.parent_id ?? "-" },
-                    { header: "Status", accessorKey: "status", cell: (row) => <StatusBadge config={row.status === "ACTIVE" ? ASSET_STATUS.AVAILABLE : ASSET_STATUS.RETIRED} /> },
+                    {
+                      header: "Status",
+                      accessorKey: "status",
+                      cell: (row) => <StatusBadge config={row.status === "ACTIVE" ? ASSET_STATUS.AVAILABLE : ASSET_STATUS.RETIRED} />,
+                    },
                   ]}
                 />
               ) : null}
@@ -95,7 +274,11 @@ export default function OrganizationPage() {
                     { header: "Category", accessorKey: "name" },
                     { header: "Description", accessorKey: "description", cell: (row) => row.description ?? "-" },
                     { header: "Fields", accessorKey: "field_schema", cell: (row) => `${row.field_schema.length} custom` },
-                    { header: "Status", accessorKey: "status", cell: (row) => <StatusBadge config={row.status === "ACTIVE" ? ASSET_STATUS.AVAILABLE : ASSET_STATUS.RETIRED} /> },
+                    {
+                      header: "Status",
+                      accessorKey: "status",
+                      cell: (row) => <StatusBadge config={row.status === "ACTIVE" ? ASSET_STATUS.AVAILABLE : ASSET_STATUS.RETIRED} />,
+                    },
                   ]}
                 />
               ) : null}
@@ -107,7 +290,7 @@ export default function OrganizationPage() {
           <Card>
             <CardHeader>
               <CardTitle>Employee directory</CardTitle>
-              <CardDescription>The promote action maps to the Admin-only role endpoint.</CardDescription>
+              <CardDescription>Role and access status come from the organization employee row.</CardDescription>
             </CardHeader>
             <CardContent>
               <LoadState loading={employees.isLoading} error={employees.isError} />
@@ -119,11 +302,23 @@ export default function OrganizationPage() {
                     { header: "Email", accessorKey: "email" },
                     { header: "Department", accessorKey: "department_name", cell: (row) => row.department_name ?? "-" },
                     { header: "Role", accessorKey: "role", cell: (row) => ROLE_LABELS[row.role] },
+                    {
+                      header: "Access",
+                      accessorKey: "access_status",
+                      cell: (row) => <StatusBadge config={ACCESS_STATUS[row.access_status ?? "ACTIVE"]} />,
+                    },
                   ]}
                 />
               ) : null}
             </CardContent>
           </Card>
+        ) : null}
+
+        {activeTab === "Access" ? (
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <JoinCodesPanel />
+            <JoinRequestsQueue />
+          </div>
         ) : null}
       </div>
     </div>

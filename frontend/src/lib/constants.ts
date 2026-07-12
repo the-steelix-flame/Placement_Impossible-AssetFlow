@@ -12,6 +12,8 @@ import type {
   MaintenancePriority,
   AuditCycleStatus,
   AuditResult,
+  EmployeeAccessStatus,
+  SignupRequestStatus,
 } from "./types";
 
 interface StatusConfig {
@@ -25,6 +27,21 @@ export const ROLE_LABELS: Record<import("./types").UserRole, string> = {
   ASSET_MANAGER: "Asset Manager",
   DEPT_HEAD: "Department Head",
   EMPLOYEE: "Employee",
+};
+
+export const ACCESS_STATUS: Record<EmployeeAccessStatus, StatusConfig> = {
+  PENDING_APPROVAL: { label: "Pending Approval", color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
+  ACTIVE: { label: "Active", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+  REJECTED: { label: "Rejected", color: "text-red-700", bg: "bg-red-50 border-red-200" },
+  SUSPENDED: { label: "Suspended", color: "text-slate-700", bg: "bg-slate-50 border-slate-200" },
+};
+
+export const SIGNUP_REQUEST_STATUS: Record<SignupRequestStatus, StatusConfig> = {
+  PENDING_EMAIL_VERIFICATION: { label: "Email Pending", color: "text-blue-700", bg: "bg-blue-50 border-blue-200" },
+  PENDING_APPROVAL: { label: "Pending Approval", color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
+  APPROVED: { label: "Approved", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+  REJECTED: { label: "Rejected", color: "text-red-700", bg: "bg-red-50 border-red-200" },
+  EXPIRED: { label: "Expired", color: "text-slate-700", bg: "bg-slate-50 border-slate-200" },
 };
 
 export const ASSET_STATUS: Record<AssetStatus, StatusConfig> = {

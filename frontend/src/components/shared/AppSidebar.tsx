@@ -39,7 +39,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { data: me } = useMe();
 
-  const visibleItems = navItems.filter((item) => !item.roles || !me || item.roles.includes(me.role));
+  const visibleItems = navItems.filter((item) => !item.roles || (me && item.roles.includes(me.role)));
 
   return (
     <aside className="hidden w-64 shrink-0 border-r bg-sidebar lg:block">

@@ -1,18 +1,18 @@
 """
-Supabase JWT auth bridge + workspace-onboarding link.
+Supabase JWT auth bridge plus workspace-onboarding link.
 
-Real Supabase user tokens are verified with the public JWKS (ES256/RS256); local
-`mint_token` tokens use HS256. After verification the employee is resolved from OUR
-tables — never from token claims:
+Real Supabase user tokens are verified with public JWKS (ES256/RS256); local
+`mint_token` tokens use HS256. After verification, the employee is resolved from
+our database tables, never from token claims:
 
-1. already linked → match by `auth_uid`;
-2. first login after onboarding → link via the single-use signup ticket in Supabase
-   `user_metadata` (created by /onboarding/workspaces or /onboarding/join/validate-code);
-3. pre-provisioned directory row → link by email;
-4. fallback → auto-create a PENDING_APPROVAL employee (secure default).
+1. Already linked: match by `auth_uid`.
+2. First login after onboarding: link via the single-use signup ticket in
+   Supabase `user_metadata`.
+3. Pre-provisioned directory row: link by email.
+4. Fallback: auto-create a PENDING_APPROVAL employee.
 
-`access_status` gates company data: `member_auth` lets pending users reach /me and the
-pending screen; `active_auth` (the default for business routers) rejects them with 403
+`access_status` gates company data. `member_auth` lets pending users reach `/me`
+and the pending screen; `active_auth` rejects pending users with
 `approval_pending`.
 """
 from __future__ import annotations
@@ -121,8 +121,7 @@ def _resolve_employee(payload: dict):
             existing.save(update_fields=["auth_uid", "full_name", "updated_at"])
             return existing
 
-    # Fallback: a token with no onboarding trail. Create a pending employee — an
-    # Admin must approve before they see anything.
+    # Secure fallback for a token with no onboarding trail.
     return Employee.objects.create(
         org=org,
         auth_uid=auth_uid,
@@ -153,7 +152,7 @@ class SupabaseAuth(HttpBearer):
         return employee
 
 
-# Business routers reject pending users; /me + onboarding reads use the member variant.
+# Business routers reject pending users; /me and pending-approval reads use member_auth.
 active_auth = SupabaseAuth(require_active=True)
 member_auth = SupabaseAuth(require_active=False)
-supabase_auth = active_auth  # backward-compatible default used by existing routers
+supabase_auth = active_auth
