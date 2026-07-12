@@ -290,12 +290,27 @@ export interface Notification {
 export interface ActivityLog {
   id: string;
   actor_id: string | null;
+  actor_name?: string | null;
   actor?: Employee;
   action: string;
   entity_type: string;
   entity_id: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+}
+
+export interface UtilizationReportRow {
+  department_id: string;
+  department: string;
+  total_assets: number;
+  allocated: number;
+  utilization_pct: number;
+}
+
+export interface BookingHeatmapEntry {
+  weekday: number;
+  hour: number;
+  count: number;
 }
 
 // -- API response shapes --
