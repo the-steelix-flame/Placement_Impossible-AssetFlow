@@ -10,6 +10,16 @@ export type UserRole = "ADMIN" | "ASSET_MANAGER" | "DEPT_HEAD" | "EMPLOYEE";
 
 export type RecordStatus = "ACTIVE" | "INACTIVE";
 
+export type AssetFieldType = "text" | "number" | "date" | "boolean" | "select" | string;
+
+export interface AssetFieldDefinition {
+  key: string;
+  label: string;
+  type?: AssetFieldType;
+  required?: boolean;
+  options?: string[];
+}
+
 export type AssetStatus =
   | "AVAILABLE"
   | "ALLOCATED"
@@ -90,7 +100,7 @@ export interface AssetCategory {
   id: string;
   name: string;
   description: string | null;
-  field_schema: Record<string, unknown>[];
+  field_schema: AssetFieldDefinition[];
   status: RecordStatus;
 }
 
@@ -109,6 +119,7 @@ export interface Asset {
   department_id: string | null;
   department_name?: string;
   is_bookable: boolean;
+  custom_fields?: Record<string, unknown>;
   photo_url: string | null;
   created_at: string;
   updated_at?: string;
@@ -152,29 +163,41 @@ export interface OverdueAllocation {
 export interface Allocation {
   id: string;
   asset_id: string;
+  asset_tag?: string | null;
+  asset_name?: string | null;
   asset?: Asset;
   employee_id: string | null;
+  employee_name?: string | null;
   employee?: Employee;
   department_id: string | null;
+  department_name?: string | null;
   department?: Department;
   allocated_by: string;
+  allocated_by_id?: string;
   allocated_at: string;
   expected_return_date: string | null;
   returned_at: string | null;
   return_condition: AssetCondition | null;
   return_notes: string | null;
+  is_overdue?: boolean;
 }
 
 export interface TransferRequest {
   id: string;
   asset_id: string;
+  asset_tag?: string | null;
+  asset_name?: string | null;
   asset?: Asset;
   from_allocation_id: string;
   requested_by: string;
+  requested_by_id?: string;
+  requested_by_name?: string | null;
   requester?: Employee;
   to_employee_id: string | null;
+  to_employee_name?: string | null;
   to_employee?: Employee;
   to_department_id: string | null;
+  to_department_name?: string | null;
   to_department?: Department;
   reason: string | null;
   status: TransferStatus;
@@ -187,13 +210,17 @@ export interface TransferRequest {
 export interface Booking {
   id: string;
   asset_id: string;
+  asset_tag?: string | null;
   asset?: Asset;
-  booked_by: string;
+  booked_by?: string;
+  booked_by_id?: string;
+  booked_by_name?: string | null;
   booker?: Employee;
   starts_at: string;
   ends_at: string;
   purpose: string | null;
   status: BookingStatus;
+  state?: "UPCOMING" | "ONGOING" | "COMPLETED" | "CANCELLED";
   cancelled_at: string | null;
   created_at: string;
 }

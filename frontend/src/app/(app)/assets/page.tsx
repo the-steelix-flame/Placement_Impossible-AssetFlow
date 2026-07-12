@@ -11,8 +11,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ASSET_CONDITION, ASSET_STATUS } from "@/lib/constants";
-import { mockAssets, mockCategories } from "@/lib/mock-data";
-import type { AssetStatus } from "@/lib/types";
+import type { Asset, AssetCategory, AssetStatus } from "@/lib/types";
+import { useApiQuery } from "@/hooks/useApiQuery";
 
 const statusOptions: Array<AssetStatus | "ALL"> = ["ALL", "AVAILABLE", "ALLOCATED", "UNDER_MAINTENANCE", "RETIRED"];
 
@@ -20,15 +20,26 @@ export default function AssetsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<AssetStatus | "ALL">("ALL");
   const [categoryId, setCategoryId] = useState("ALL");
+  const {
+    data: assets = [],
+    isLoading: assetsLoading,
+    isError: assetsError,
+  } = useApiQuery<Asset[]>(["assets"], "/assets");
+  const { data: categories = [] } = useApiQuery<AssetCategory[]>(["asset-categories"], "/asset-categories");
 
   const filteredAssets = useMemo(() => {
-    return mockAssets.filter((asset) => {
-      const matchesSearch = `${asset.asset_tag} ${asset.name} ${asset.serial_number ?? ""}`.toLowerCase().includes(search.toLowerCase());
+    return assets.filter((asset) => {
+      const query = search.toLowerCase().trim();
+      const matchesSearch =
+        !query ||
+        `${asset.asset_tag} ${asset.name} ${asset.serial_number ?? ""} ${asset.location ?? ""} ${asset.department_name ?? ""}`
+          .toLowerCase()
+          .includes(query);
       const matchesStatus = status === "ALL" || asset.status === status;
       const matchesCategory = categoryId === "ALL" || asset.category_id === categoryId;
       return matchesSearch && matchesStatus && matchesCategory;
     });
-  }, [categoryId, search, status]);
+  }, [assets, categoryId, search, status]);
 
   return (
     <div>
@@ -62,7 +73,7 @@ export default function AssetsPage() {
               onChange={(event) => setCategoryId(event.target.value)}
             >
               <option value="ALL">All categories</option>
-              {mockCategories.map((category) => (
+              {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
                 </option>
@@ -71,7 +82,11 @@ export default function AssetsPage() {
           </CardContent>
         </Card>
 
-        {filteredAssets.length ? (
+        {assetsError ? (
+          <div className="rounded-lg border bg-card p-6 text-sm text-destructive">Could not load assets from the API.</div>
+        ) : assetsLoading ? (
+          <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">Loading assets...</div>
+        ) : filteredAssets.length ? (
           <DataTable
             data={filteredAssets}
             columns={[
@@ -85,9 +100,9 @@ export default function AssetsPage() {
                   </Link>
                 ),
               },
-              { header: "Category", accessorKey: "category_name" },
-              { header: "Holder", accessorKey: "department_name" },
-              { header: "Location", accessorKey: "location" },
+              { header: "Category", accessorKey: "category_name", cell: (asset) => asset.category_name ?? "-" },
+              { header: "Owner", accessorKey: "department_name", cell: (asset) => asset.department_name ?? "-" },
+              { header: "Location", accessorKey: "location", cell: (asset) => asset.location ?? "-" },
               { header: "Condition", accessorKey: "condition", cell: (asset) => <StatusBadge config={ASSET_CONDITION[asset.condition]} /> },
               { header: "Status", accessorKey: "status", cell: (asset) => <StatusBadge config={ASSET_STATUS[asset.status]} /> },
             ]}

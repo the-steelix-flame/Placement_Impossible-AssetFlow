@@ -26,7 +26,10 @@ type ApiRequestInit = Omit<RequestInit, "body"> & {
 };
 
 export async function fetchApi<T>(endpoint: string, options: ApiRequestInit = {}): Promise<T> {
-  const url = `${getApiBaseUrl()}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const normalizedEndpoint = endpoint.startsWith("/api/v1/")
+    ? endpoint.slice("/api/v1".length)
+    : endpoint;
+  const url = `${getApiBaseUrl()}${normalizedEndpoint.startsWith("/") ? normalizedEndpoint : `/${normalizedEndpoint}`}`;
   const headers = new Headers(options.headers);
   const isFormData = options.body instanceof FormData;
   const isBodyInit =
