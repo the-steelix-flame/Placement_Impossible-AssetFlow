@@ -26,13 +26,18 @@ def _env_list(name: str, default: str = "") -> list[str]:
 # ── Core ───────────────────────────────────────────────────────────────
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "insecure-dev-key-do-not-use-in-prod")
 DEBUG = _env_bool("DJANGO_DEBUG", True)
-# ".hf.space" (leading dot = subdomain wildcard) lets the Hugging Face Space host itself.
-ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0,.hf.space")
+# Leading dot = subdomain wildcard. Covers Render (.onrender.com) and HF (.hf.space)
+# out of the box; override with DJANGO_ALLOWED_HOSTS for a custom domain.
+ALLOWED_HOSTS = _env_list(
+    "DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0,.onrender.com,.hf.space"
+)
 
-# Behind HF/Vercel TLS termination — trust the forwarded proto so HTTPS is detected.
+# Behind Render/HF/Vercel TLS termination — trust the forwarded proto so HTTPS is detected.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-# Needed for the Django admin login form over HTTPS (set to the Space URL in prod).
-CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS", "https://*.hf.space")
+# Needed for the Django admin login form over HTTPS (set to the deployed URL in prod).
+CSRF_TRUSTED_ORIGINS = _env_list(
+    "CSRF_TRUSTED_ORIGINS", "https://*.onrender.com,https://*.hf.space"
+)
 # Secure cookies in prod (admin only — the JWT API is cookie-less).
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

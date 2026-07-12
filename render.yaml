@@ -1,0 +1,39 @@
+# Render Blueprint — deploys the AssetFlow backend as a free Docker web service.
+# New → Blueprint → connect this repo → Render reads this file. Fill the `sync: false`
+# secrets in the dashboard when prompted; DJANGO_SECRET_KEY is auto-generated.
+services:
+  - type: web
+    name: assetflow-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true          # Render generates a strong value
+      - key: POSTGRES_DB
+        value: postgres
+      - key: POSTGRES_USER
+        value: postgres.swfvszponvxcbiwtkrbw
+      - key: POSTGRES_PASSWORD
+        sync: false                  # set in dashboard (your Supabase DB password)
+      - key: POSTGRES_HOST
+        value: aws-0-ap-southeast-1.pooler.supabase.com
+      - key: POSTGRES_PORT
+        value: "5432"
+      - key: POSTGRES_SSLMODE
+        value: require
+      - key: SUPABASE_URL
+        value: https://swfvszponvxcbiwtkrbw.supabase.co
+      - key: SUPABASE_JWT_AUD
+        value: authenticated
+      - key: SUPABASE_JWT_SECRET
+        sync: false                  # any long random string (HS256 dev tokens)
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false                  # backend-only Supabase key
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:3000  # add the Vercel URL after the frontend deploys
