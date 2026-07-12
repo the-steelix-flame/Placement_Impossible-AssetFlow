@@ -28,9 +28,21 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "insecure-dev-key-do-not-use-in-prod
 DEBUG = _env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0")
 
-# Auth / JWT — the HS256 secret Supabase signs tokens with (dev: our own value).
+# ── Auth / JWT ─────────────────────────────────────────────────────────
+# Real Supabase user tokens are signed with the project's ASYMMETRIC key
+# (ES256/RS256) and verified against the public JWKS. Local `mint_token` tokens
+# are signed with the HS256 shared secret below. core/auth.py accepts both,
+# routing by the token's `alg` header.
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "local-dev-super-secret-jwt-signing-key-change-me")
 SUPABASE_JWT_AUD = os.getenv("SUPABASE_JWT_AUD", "authenticated")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+# JWKS URL derives from the project URL unless explicitly overridden.
+SUPABASE_JWKS_URL = os.getenv(
+    "SUPABASE_JWKS_URL",
+    f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else "",
+)
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 # ── Apps ───────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
