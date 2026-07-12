@@ -26,7 +26,16 @@ def _env_list(name: str, default: str = "") -> list[str]:
 # ── Core ───────────────────────────────────────────────────────────────
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "insecure-dev-key-do-not-use-in-prod")
 DEBUG = _env_bool("DJANGO_DEBUG", True)
-ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0")
+# ".hf.space" (leading dot = subdomain wildcard) lets the Hugging Face Space host itself.
+ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0,.hf.space")
+
+# Behind HF/Vercel TLS termination — trust the forwarded proto so HTTPS is detected.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Needed for the Django admin login form over HTTPS (set to the Space URL in prod).
+CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS", "https://*.hf.space")
+# Secure cookies in prod (admin only — the JWT API is cookie-less).
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 # ── Auth / JWT ─────────────────────────────────────────────────────────
 # Real Supabase user tokens are signed with the project's ASYMMETRIC key
@@ -69,6 +78,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # serve Django admin static on HF
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -95,7 +105,14 @@ TEMPLATES = [
     },
 ]
 
-# ── Database (local PostgreSQL in dev; Supabase pooler in prod) ─────────
+# ── Database (local PostgreSQL in dev; Supabase session pooler in prod) ──
+_db_options: dict = {}
+# Supabase requires SSL; local Postgres usually doesn't. Env-driven so the same
+# code works both places (set POSTGRES_SSLMODE=require for Supabase).
+_sslmode = os.getenv("POSTGRES_SSLMODE", "").strip()
+if _sslmode:
+    _db_options["sslmode"] = _sslmode
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -104,6 +121,8 @@ DATABASES = {
         "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
         "HOST": os.getenv("POSTGRES_HOST", "localhost"),
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": int(os.getenv("POSTGRES_CONN_MAX_AGE", "60")),
+        "OPTIONS": _db_options,
     }
 }
 
@@ -118,9 +137,13 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# ── Static ─────────────────────────────────────────────────────────────
+# ── Static (whitenoise serves Django admin assets in prod) ─────────────
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
