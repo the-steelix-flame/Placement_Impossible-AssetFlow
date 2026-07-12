@@ -2,13 +2,14 @@
 Supabase JWT auth bridge.
 
 The frontend authenticates with Supabase and sends the JWT as
-`Authorization: Bearer <token>`. We verify the signature against SUPABASE_JWT_SECRET
-(HS256 — the same secret Supabase signs with), then resolve the *role* from OUR
-`employees` table by `auth_uid`. Roles are NEVER read from token claims, so a forged
-or self-edited claim can't escalate privileges.
+`Authorization: Bearer <token>`. Real Supabase user tokens are verified with
+Supabase's public JWKS (ES256/RS256); local dev tokens can still use HS256.
+After verification, the role is resolved from OUR `employees` table by
+`auth_uid`. Roles are NEVER read from token claims, so a forged or self-edited
+claim cannot escalate privileges.
 
-On first login (no matching employee row yet) we auto-create a plain EMPLOYEE — the
-only role a self-service signup can ever produce.
+On first login (no matching employee row yet) we auto-create a plain EMPLOYEE.
+The only role a self-service signup can ever produce is EMPLOYEE.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from django.conf import settings
 from jwt import PyJWKClient
 from ninja.security import HttpBearer
 
-# Cached JWKS client (fetches + caches Supabase's public ES256/RS256 keys).
+# Cached JWKS client fetches and caches Supabase's public ES256/RS256 keys.
 _jwks_client: PyJWKClient | None = None
 
 
@@ -31,8 +32,8 @@ def _get_jwks_client() -> PyJWKClient | None:
 def _verify_token(token: str) -> dict | None:
     """Verify a Supabase user JWT, routing by its `alg` header.
 
-    ES256/RS256 → real Supabase tokens, verified against the public JWKS.
-    HS256       → local `mint_token` dev tokens, verified with the shared secret.
+    ES256/RS256 -> real Supabase tokens, verified against the public JWKS.
+    HS256       -> local `mint_token` dev tokens, verified with the shared secret.
     """
     try:
         alg = jwt.get_unverified_header(token).get("alg")
